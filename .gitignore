@@ -1,0 +1,53 @@
+# Java / Maven
+**/target/
+*.jar
+*.war
+*.ear
+*.class
+hs_err_pid*
+replay_pid*
+
+# Maven wrapper (keep)
+!.mvn/wrapper/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Logs / Runtime
+logs/
+*.log
+*.log.*
+dump.rdb
+debug.log
+
+# IDE / Editor
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.factorypath
+nbproject/private/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Secrets (per-deploy override)
+application-secret.yml
+**/application-secret.yml
+*.key
+*.pem
+*.p12
+*.keystore
+
+# Misc
+*.tmp
+*.bak
+*.orig
+*.rej
+.cache/
+**/bin/

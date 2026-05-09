@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.bussiness.mapper.TC2cMerchantPaymentMapper">
+
+    <resultMap type="com.ruoyi.bussiness.domain.TC2cMerchantPayment" id="TC2cMerchantPaymentResult">
+        <result property="id"    column="id"    />
+        <result property="merchantId"    column="merchant_id"    />
+        <result property="userId"    column="user_id"    />
+        <result property="paymentType"    column="payment_type"    />
+        <result property="bankName"    column="bank_name"    />
+        <result property="bankBranch"    column="bank_branch"    />
+        <result property="accountName"    column="account_name"    />
+        <result property="accountNumber"    column="account_number"    />
+        <result property="routingNumber"    column="routing_number"    />
+        <result property="swiftCode"    column="swift_code"    />
+        <result property="isEnabled"    column="is_enabled"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateTime"    column="update_time"    />
+    </resultMap>
+
+    <sql id="selectTC2cMerchantPaymentVo">
+        select id, merchant_id, user_id, payment_type, bank_name, bank_branch, account_name, account_number, routing_number, swift_code, is_enabled, create_time, update_time from t_c2c_merchant_payment
+    </sql>
+
+    <select id="selectByMerchantId" parameterType="Long" resultMap="TC2cMerchantPaymentResult">
+        <include refid="selectTC2cMerchantPaymentVo"/>
+        where merchant_id = #{merchantId}
+    </select>
+
+    <select id="selectEnabledByMerchantId" parameterType="Long" resultMap="TC2cMerchantPaymentResult">
+        <include refid="selectTC2cMerchantPaymentVo"/>
+        where merchant_id = #{merchantId} and is_enabled = 1
+    </select>
+
+    <select id="selectByUserId" parameterType="Long" resultMap="TC2cMerchantPaymentResult">
+        <include refid="selectTC2cMerchantPaymentVo"/>
+        where user_id = #{userId}
+        order by create_time desc
+    </select>
+
+    <select id="selectEnabledByUserId" parameterType="Long" resultMap="TC2cMerchantPaymentResult">
+        <include refid="selectTC2cMerchantPaymentVo"/>
+        where user_id = #{userId} and is_enabled = 1
+        order by create_time desc
+    </select>
+
+    <select id="selectTC2cMerchantPaymentById" parameterType="Long" resultMap="TC2cMerchantPaymentResult">
+        <include refid="selectTC2cMerchantPaymentVo"/>
+        where id = #{id}
+    </select>
+
+    <insert id="insertTC2cMerchantPayment" parameterType="TC2cMerchantPayment" useGeneratedKeys="true" keyProperty="id">
+        insert into t_c2c_merchant_payment
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="merchantId != null">merchant_id,</if>
+            <if test="userId != null">user_id,</if>
+            <if test="paymentType != null">payment_type,</if>
+            <if test="bankName != null">bank_name,</if>
+            <if test="bankBranch != null">bank_branch,</if>
+            <if test="accountName != null">account_name,</if>
+            <if test="accountNumber != null">account_number,</if>
+            <if test="routingNumber != null">routing_number,</if>
+            <if test="swiftCode != null">swift_code,</if>
+            <if test="isEnabled != null">is_enabled,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateTime != null">update_time,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="merchantId != null">#{merchantId},</if>
+            <if test="userId != null">#{userId},</if>
+            <if test="paymentType != null">#{paymentType},</if>
+            <if test="bankName != null">#{bankName},</if>
+            <if test="bankBranch != null">#{bankBranch},</if>
+            <if test="accountName != null">#{accountName},</if>
+            <if test="accountNumber != null">#{accountNumber},</if>
+            <if test="routingNumber != null">#{routingNumber},</if>
+            <if test="swiftCode != null">#{swiftCode},</if>
+            <if test="isEnabled != null">#{isEnabled},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+        </trim>
+    </insert>
+
+    <update id="updateTC2cMerchantPayment" parameterType="TC2cMerchantPayment">
+        update t_c2c_merchant_payment
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="paymentType != null">payment_type = #{paymentType},</if>
+            <if test="bankName != null">bank_name = #{bankName},</if>
+            <if test="bankBranch != null">bank_branch = #{bankBranch},</if>
+            <if test="accountName != null">account_name = #{accountName},</if>
+            <if test="accountNumber != null">account_number = #{accountNumber},</if>
+            <if test="routingNumber != null">routing_number = #{routingNumber},</if>
+            <if test="swiftCode != null">swift_code = #{swiftCode},</if>
+            <if test="isEnabled != null">is_enabled = #{isEnabled},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </trim>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteTC2cMerchantPaymentById" parameterType="Long">
+        delete from t_c2c_merchant_payment where id = #{id}
+    </delete>
+
+    <delete id="deleteTC2cMerchantPaymentByIds" parameterType="String">
+        delete from t_c2c_merchant_payment where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

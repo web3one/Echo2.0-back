@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.bussiness.mapper.TC2cAppealMessageMapper">
+
+    <resultMap type="com.ruoyi.bussiness.domain.TC2cAppealMessage" id="TC2cAppealMessageResult">
+        <result property="id"    column="id"    />
+        <result property="appealId"    column="appeal_id"    />
+        <result property="senderId"    column="sender_id"    />
+        <result property="senderType"    column="sender_type"    />
+        <result property="contentType"    column="content_type"    />
+        <result property="content"    column="content"    />
+        <result property="createTime"    column="create_time"    />
+    </resultMap>
+
+    <sql id="selectTC2cAppealMessageVo">
+        select id, appeal_id, sender_id, sender_type, content_type, content, create_time from t_c2c_appeal_message
+    </sql>
+
+    <select id="selectByAppealId" parameterType="Long" resultMap="TC2cAppealMessageResult">
+        <include refid="selectTC2cAppealMessageVo"/>
+        where appeal_id = #{appealId}
+        order by create_time asc
+    </select>
+
+    <select id="selectTC2cAppealMessageById" parameterType="Long" resultMap="TC2cAppealMessageResult">
+        <include refid="selectTC2cAppealMessageVo"/>
+        where id = #{id}
+    </select>
+
+    <insert id="insertTC2cAppealMessage" parameterType="TC2cAppealMessage" useGeneratedKeys="true" keyProperty="id">
+        insert into t_c2c_appeal_message
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="appealId != null">appeal_id,</if>
+            <if test="senderId != null">sender_id,</if>
+            <if test="senderType != null">sender_type,</if>
+            <if test="contentType != null">content_type,</if>
+            <if test="content != null">content,</if>
+            <if test="createTime != null">create_time,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="appealId != null">#{appealId},</if>
+            <if test="senderId != null">#{senderId},</if>
+            <if test="senderType != null">#{senderType},</if>
+            <if test="contentType != null">#{contentType},</if>
+            <if test="content != null">#{content},</if>
+            <if test="createTime != null">#{createTime},</if>
+        </trim>
+    </insert>
+
+    <delete id="deleteTC2cAppealMessageById" parameterType="Long">
+        delete from t_c2c_appeal_message where id = #{id}
+    </delete>
+
+    <delete id="deleteTC2cAppealMessageByIds" parameterType="String">
+        delete from t_c2c_appeal_message where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

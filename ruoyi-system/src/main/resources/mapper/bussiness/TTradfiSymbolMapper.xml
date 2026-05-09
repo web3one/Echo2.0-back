@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.bussiness.mapper.TTradfiSymbolMapper">
+
+    <resultMap type="com.ruoyi.bussiness.domain.TTradfiSymbol" id="TTradfiSymbolResult">
+        <id     property="id"            column="id"/>
+        <result property="symbol"        column="symbol"/>
+        <result property="showSymbol"    column="show_symbol"/>
+        <result property="gateContract"  column="gate_contract"/>
+        <result property="category"      column="category"/>
+        <result property="baseCoin"      column="base_coin"/>
+        <result property="logo"          column="logo"/>
+        <result property="market"        column="market"/>
+        <result property="status"        column="status"/>
+        <result property="showFlag"      column="show_flag"/>
+        <result property="decimals"      column="decimals"/>
+        <result property="sort"          column="sort"/>
+        <result property="createBy"      column="create_by"/>
+        <result property="createTime"    column="create_time"/>
+        <result property="updateBy"      column="update_by"/>
+        <result property="updateTime"    column="update_time"/>
+        <result property="remark"        column="remark"/>
+    </resultMap>
+
+    <sql id="selectTTradfiSymbolVo">
+        SELECT id, symbol, show_symbol, gate_contract, category, base_coin, logo, market,
+               status, show_flag, decimals, sort,
+               create_by, create_time, update_by, update_time, remark
+        FROM t_tradfi_symbol
+    </sql>
+
+    <select id="selectTTradfiSymbolList" parameterType="com.ruoyi.bussiness.domain.TTradfiSymbol"
+            resultMap="TTradfiSymbolResult">
+        <include refid="selectTTradfiSymbolVo"/>
+        <where>
+            <if test="symbol       != null and symbol       != ''"> AND symbol       = #{symbol}      </if>
+            <if test="category     != null and category     != ''"> AND category     = #{category}    </if>
+            <if test="market       != null and market       != ''"> AND market       = #{market}      </if>
+            <if test="status       != null"                       > AND status       = #{status}      </if>
+            <if test="showFlag     != null"                       > AND show_flag    = #{showFlag}    </if>
+            <if test="baseCoin     != null and baseCoin     != ''"> AND base_coin    = #{baseCoin}    </if>
+            <if test="gateContract != null and gateContract != ''"> AND gate_contract= #{gateContract}</if>
+        </where>
+        ORDER BY sort, id
+    </select>
+
+    <select id="selectTTradfiSymbolById" parameterType="Long" resultMap="TTradfiSymbolResult">
+        <include refid="selectTTradfiSymbolVo"/>
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectActiveForPolling" parameterType="String" resultMap="TTradfiSymbolResult">
+        <include refid="selectTTradfiSymbolVo"/>
+        WHERE status = 1
+          <if test="_parameter != null and _parameter != ''"> AND market = #{_parameter} </if>
+        ORDER BY sort, id
+    </select>
+
+    <select id="selectH5SymbolList" resultMap="TTradfiSymbolResult">
+        <include refid="selectTTradfiSymbolVo"/>
+        WHERE status = 1 AND show_flag = 1
+        ORDER BY sort, id
+    </select>
+
+    <insert id="insertTTradfiSymbol" parameterType="com.ruoyi.bussiness.domain.TTradfiSymbol"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO t_tradfi_symbol
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="symbol       != null">symbol,</if>
+            <if test="showSymbol   != null">show_symbol,</if>
+            <if test="gateContract != null">gate_contract,</if>
+            <if test="category     != null">category,</if>
+            <if test="baseCoin     != null">base_coin,</if>
+            <if test="logo         != null">logo,</if>
+            <if test="market       != null">market,</if>
+            <if test="status       != null">status,</if>
+            <if test="showFlag     != null">show_flag,</if>
+            <if test="decimals     != null">decimals,</if>
+            <if test="sort         != null">sort,</if>
+            <if test="createBy     != null">create_by,</if>
+            <if test="createTime   != null">create_time,</if>
+            <if test="updateBy     != null">update_by,</if>
+            <if test="updateTime   != null">update_time,</if>
+            <if test="remark       != null">remark,</if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            <if test="symbol       != null">#{symbol},</if>
+            <if test="showSymbol   != null">#{showSymbol},</if>
+            <if test="gateContract != null">#{gateContract},</if>
+            <if test="category     != null">#{category},</if>
+            <if test="baseCoin     != null">#{baseCoin},</if>
+            <if test="logo         != null">#{logo},</if>
+            <if test="market       != null">#{market},</if>
+            <if test="status       != null">#{status},</if>
+            <if test="showFlag     != null">#{showFlag},</if>
+            <if test="decimals     != null">#{decimals},</if>
+            <if test="sort         != null">#{sort},</if>
+            <if test="createBy     != null">#{createBy},</if>
+            <if test="createTime   != null">#{createTime},</if>
+            <if test="updateBy     != null">#{updateBy},</if>
+            <if test="updateTime   != null">#{updateTime},</if>
+            <if test="remark       != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateTTradfiSymbol" parameterType="com.ruoyi.bussiness.domain.TTradfiSymbol">
+        UPDATE t_tradfi_symbol
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="symbol       != null">symbol = #{symbol},</if>
+            <if test="showSymbol   != null">show_symbol = #{showSymbol},</if>
+            <if test="gateContract != null">gate_contract = #{gateContract},</if>
+            <if test="category     != null">category = #{category},</if>
+            <if test="baseCoin     != null">base_coin = #{baseCoin},</if>
+            <if test="logo         != null">logo = #{logo},</if>
+            <if test="market       != null">market = #{market},</if>
+            <if test="status       != null">status = #{status},</if>
+            <if test="showFlag     != null">show_flag = #{showFlag},</if>
+            <if test="decimals     != null">decimals = #{decimals},</if>
+            <if test="sort         != null">sort = #{sort},</if>
+            <if test="updateBy     != null">update_by = #{updateBy},</if>
+            <if test="updateTime   != null">update_time = #{updateTime},</if>
+            <if test="remark       != null">remark = #{remark},</if>
+        </trim>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteTTradfiSymbolById" parameterType="Long">
+        DELETE FROM t_tradfi_symbol WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteTTradfiSymbolByIds" parameterType="String">
+        DELETE FROM t_tradfi_symbol WHERE id IN
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper>

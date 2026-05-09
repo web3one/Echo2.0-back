@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.bussiness.mapper.TC2cMerchantMapper">
+
+    <resultMap type="com.ruoyi.bussiness.domain.TC2cMerchant" id="TC2cMerchantResult">
+        <result property="id"    column="id"    />
+        <result property="userId"    column="user_id"    />
+        <result property="nickname"    column="nickname"    />
+        <result property="status"    column="status"    />
+        <result property="totalOrders"    column="total_orders"    />
+        <result property="totalVolume"    column="total_volume"    />
+        <result property="completionRate"    column="completion_rate"    />
+        <result property="avgReleaseTime"    column="avg_release_time"    />
+        <result property="positiveRate"    column="positive_rate"    />
+        <result property="depositAmount"    column="deposit_amount"    />
+        <result property="rejectReason"    column="reject_reason"    />
+        <result property="adminParentIds"    column="admin_parent_ids"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectTC2cMerchantVo">
+        select id, user_id, nickname, status, total_orders, total_volume, completion_rate, avg_release_time, positive_rate, deposit_amount, reject_reason, admin_parent_ids, create_by, create_time, update_by, update_time, remark from t_c2c_merchant
+    </sql>
+
+    <select id="selectMerchantList" parameterType="TC2cMerchant" resultMap="TC2cMerchantResult">
+        select t.id, t.user_id, t.nickname, t.status, t.total_orders, t.total_volume,
+        t.completion_rate, t.avg_release_time, t.positive_rate, t.deposit_amount,
+        t.reject_reason, t.admin_parent_ids, t.create_by, t.create_time, t.update_by,
+        t.update_time, t.remark, u.login_name as loginName
+        from t_c2c_merchant t
+        left join t_app_user u on t.user_id = u.user_id
+        <where>
+            <if test="adminParentIds != null and adminParentIds != ''">
+                AND find_in_set(#{adminParentIds}, u.admin_parent_ids)
+            </if>
+            <if test="userId != null"> and t.user_id = #{userId}</if>
+            <if test="status != null"> and t.status = #{status}</if>
+            <if test="nickname != null and nickname != ''"> and t.nickname like concat('%', #{nickname}, '%')</if>
+            <if test="params != null and params != ''">
+                <if test="params.startTime != null">
+                    and t.create_time <![CDATA[ >= ]]> #{params.startTime}
+                </if>
+                <if test="params.endTime != null">
+                    and t.create_time <![CDATA[ <= ]]> #{params.endTime}
+                </if>
+            </if>
+        </where>
+        order by t.create_time desc
+    </select>
+
+    <select id="selectByUserId" parameterType="Long" resultMap="TC2cMerchantResult">
+        <include refid="selectTC2cMerchantVo"/>
+        where user_id = #{userId}
+    </select>
+
+    <insert id="insertTC2cMerchant" parameterType="TC2cMerchant" useGeneratedKeys="true" keyProperty="id">
+        insert into t_c2c_merchant
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="userId != null">user_id,</if>
+            <if test="nickname != null">nickname,</if>
+            <if test="status != null">status,</if>
+            <if test="totalOrders != null">total_orders,</if>
+            <if test="totalVolume != null">total_volume,</if>
+            <if test="completionRate != null">completion_rate,</if>
+            <if test="avgReleaseTime != null">avg_release_time,</if>
+            <if test="positiveRate != null">positive_rate,</if>
+            <if test="depositAmount != null">deposit_amount,</if>
+            <if test="rejectReason != null">reject_reason,</if>
+            <if test="adminParentIds != null">admin_parent_ids,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="userId != null">#{userId},</if>
+            <if test="nickname != null">#{nickname},</if>
+            <if test="status != null">#{status},</if>
+            <if test="totalOrders != null">#{totalOrders},</if>
+            <if test="totalVolume != null">#{totalVolume},</if>
+            <if test="completionRate != null">#{completionRate},</if>
+            <if test="avgReleaseTime != null">#{avgReleaseTime},</if>
+            <if test="positiveRate != null">#{positiveRate},</if>
+            <if test="depositAmount != null">#{depositAmount},</if>
+            <if test="rejectReason != null">#{rejectReason},</if>
+            <if test="adminParentIds != null">#{adminParentIds},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateTC2cMerchant" parameterType="TC2cMerchant">
+        update t_c2c_merchant
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="nickname != null">nickname = #{nickname},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="totalOrders != null">total_orders = #{totalOrders},</if>
+            <if test="totalVolume != null">total_volume = #{totalVolume},</if>
+            <if test="completionRate != null">completion_rate = #{completionRate},</if>
+            <if test="avgReleaseTime != null">avg_release_time = #{avgReleaseTime},</if>
+            <if test="positiveRate != null">positive_rate = #{positiveRate},</if>
+            <if test="depositAmount != null">deposit_amount = #{depositAmount},</if>
+            <if test="rejectReason != null">reject_reason = #{rejectReason},</if>
+            <if test="adminParentIds != null">admin_parent_ids = #{adminParentIds},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where id = #{id}
+    </update>
+
+    <update id="updateMerchantStats" parameterType="TC2cMerchant">
+        update t_c2c_merchant
+        set total_orders = #{totalOrders},
+            total_volume = #{totalVolume},
+            completion_rate = #{completionRate},
+            update_time = now()
+        where id = #{id}
+    </update>
+
+    <delete id="deleteTC2cMerchantById" parameterType="Long">
+        delete from t_c2c_merchant where id = #{id}
+    </delete>
+
+    <delete id="deleteTC2cMerchantByIds" parameterType="String">
+        delete from t_c2c_merchant where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

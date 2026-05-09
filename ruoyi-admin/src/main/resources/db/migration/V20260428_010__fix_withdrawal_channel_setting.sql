@@ -1,0 +1,9 @@
+-- 修复提现通道配置：之前手工 UPDATE 时 JSON 被终端粘贴损坏，导致 BANK 那条 rechargeName 缺失，
+-- TWithdrawServiceImpl.java:236 在 .equals() 时 NPE。这里强制重写一次完整 9 条配置。
+--
+-- 新增 4 条 USDT-{CHAIN} 通道供新 H5 提现页（recharge-chain.vue / withdraw-chain.vue）使用。
+-- 老的 USDT-ERC / USDT-TRC / ETH / BTC / BANK 5 条保留，向后兼容。
+
+UPDATE t_setting
+SET setting_value = '[{"status":"1","rechargeName":"USDT-ERC","rechargeType":"usdt","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"USDT-TRC","rechargeType":"usdt","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"ETH","rechargeType":"eth","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"BTC","rechargeType":"btc","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"0","rechargeName":"BANK","rechargeType":"jpy","type":"1","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"USDT-BSC","rechargeType":"usdt","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"USDT-ETH","rechargeType":"usdt","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"USDT-BASE","rechargeType":"usdt","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1},{"status":"1","rechargeName":"USDT-TRX","rechargeType":"usdt","type":"0","fee":0,"ratio":0.1,"dayWithdrawalNum":10,"freeNum":3,"withdrawalMax":1000000,"withdrawalMix":1}]'
+WHERE id = 'WITHDRAWAL_CHANNEL_SETTING';
