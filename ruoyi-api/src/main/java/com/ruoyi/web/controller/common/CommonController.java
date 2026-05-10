@@ -115,7 +115,7 @@ public class CommonController
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(s.getCoin()));
+            BigDecimal openPrice = getOpenPrice(s.getCoin());
             s.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
             if(s.getMarket().equals("metal")){
                 BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin()));
@@ -133,7 +133,7 @@ public class CommonController
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(t.getCoin().toLowerCase()));
+            BigDecimal openPrice = getOpenPrice(t.getCoin().toLowerCase());
             t.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
         }
         List<TContractCoin> contractList = tContractCoinService.getCoinList();
@@ -143,7 +143,7 @@ public class CommonController
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(coin.getCoin().toLowerCase()));
+            BigDecimal openPrice = getOpenPrice(coin.getCoin().toLowerCase());
             coin.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
             coin.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
         }
@@ -153,7 +153,7 @@ public class CommonController
             String key = t.getSymbol().toLowerCase();
             BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + key));
             t.setAmount(Objects.isNull(currentlyPrice) ? BigDecimal.ZERO : currentlyPrice);
-            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(key));
+            BigDecimal openPrice = getOpenPrice(key);
             t.setOpen(Objects.isNull(openPrice) ? BigDecimal.ZERO : openPrice);
         }
 
@@ -181,6 +181,10 @@ public class CommonController
             log.warn("Cannot convert value to BigDecimal: {}", value);
             return BigDecimal.ZERO;
         }
+    }
+
+    private BigDecimal getOpenPrice(String key) {
+        return toBigDecimal(((Map) KLoader.OPEN_PRICE).get(key));
     }
 
     @ApiOperation(value = "获取客服列表")
@@ -476,11 +480,17 @@ public class CommonController
 
     @PostMapping("/getWithdrawMt5Amount")
     public AjaxResult getWithdrawMt5Amount( String coin) {
-        BigDecimal price = "USD".equals(coin.toUpperCase())?BigDecimal.ONE:redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coin.toUpperCase() + "USD");
-        if (Objects.isNull(price)){
-            price = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + "USD"+coin.toUpperCase());
-        }else{
-            price = BigDecimal.ONE.divide(price,6,RoundingMode.DOWN);
+        BigDecimal price;
+        if ("USD".equals(coin.toUpperCase())) {
+            price = BigDecimal.ONE;
+        } else {
+            Object forwardPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coin.toUpperCase() + "USD");
+            if (Objects.isNull(forwardPrice)) {
+                price = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + "USD"+coin.toUpperCase()));
+            } else {
+                BigDecimal forward = toBigDecimal(forwardPrice);
+                price = forward.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : BigDecimal.ONE.divide(forward,6,RoundingMode.DOWN);
+            }
         }
         return AjaxResult.success(price);
     }

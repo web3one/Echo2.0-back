@@ -91,17 +91,25 @@ public class TBotKlineModelServiceImpl extends ServiceImpl<TBotKlineModelMapper,
         if(tBotKlineModelVO.getModel()==0){
             //跟随型 直接更新交易对 和缓存
             String coin = tBotKlineModelVO.getSymbol().replace("usdt", "");
+            BigDecimal conPrice = tBotKlineModelVO.getConPrice();
+            if (conPrice == null) {
+                conPrice = BigDecimal.ZERO;
+                tBotKlineModel.setConPrice(conPrice);
+            }
             //存入增加价格。
             LocalDateTime currentDateTime = LocalDateTime.now();
             LocalDateTime lastWholeMinute = currentDateTime.truncatedTo(ChronoUnit.MINUTES);
             long timestamp = lastWholeMinute.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
             tBotKlineModel.setBeginTime(new Date(timestamp));
-            String cacheObject = redisCache.getCacheObject("con-" + coin);
-            if(cacheObject==null){
-                redisCache.setCacheObject("con-"+coin,tBotKlineModelVO.getConPrice()+","+tBotKlineModel.getBeginTime().getTime());
-            }else{
-                String[] split = cacheObject.split(",");
-                redisCache.setCacheObject("con-"+coin,tBotKlineModelVO.getConPrice().add(new BigDecimal(split[0]))+","+split[1]);
+            if (conPrice.compareTo(BigDecimal.ZERO) != 0) {
+                String cacheObject = redisCache.getCacheObject("con-" + coin);
+                BigDecimal currentConPrice = parseControlPrice(cacheObject);
+                String currentTime = parseControlTime(cacheObject);
+                if (currentConPrice == null || currentTime == null) {
+                    redisCache.setCacheObject("con-"+coin,conPrice+","+tBotKlineModel.getBeginTime().getTime());
+                } else {
+                    redisCache.setCacheObject("con-"+coin,conPrice.add(currentConPrice)+","+currentTime);
+                }
             }
             tBotKlineModelMapper.insertTBotKlineModel(tBotKlineModel);
         }else {
@@ -176,10 +184,16 @@ public class TBotKlineModelServiceImpl extends ServiceImpl<TBotKlineModelMapper,
                 if(cacheObject==null){
                     redisCache.deleteObject("con-"+coin);
                 }else{
-                    String[] split = cacheObject.split(",");
-                    BigDecimal subtract = new BigDecimal(split[0]).subtract(tBotKlineModel.getConPrice());
+                    BigDecimal currentConPrice = parseControlPrice(cacheObject);
+                    String currentTime = parseControlTime(cacheObject);
+                    if (currentConPrice == null || currentTime == null) {
+                        redisCache.deleteObject("con-"+coin);
+                        continue;
+                    }
+                    BigDecimal modelConPrice = tBotKlineModel.getConPrice() == null ? BigDecimal.ZERO : tBotKlineModel.getConPrice();
+                    BigDecimal subtract = currentConPrice.subtract(modelConPrice);
                     if(subtract.compareTo(BigDecimal.ZERO)!=0){
-                        redisCache.setCacheObject("con-"+coin,subtract+","+split[1]);
+                        redisCache.setCacheObject("con-"+coin,subtract+","+currentTime);
                     }else {
                         redisCache.deleteObject("con-"+coin);
                     }
@@ -238,9 +252,40 @@ public class TBotKlineModelServiceImpl extends ServiceImpl<TBotKlineModelMapper,
         List<SymbolPrice> symbolPrices = tBotKlineModelMapper.getyesterdayPrice();
         HashMap<String, BigDecimal> c =new HashMap<>();
         for (SymbolPrice symbolPrice:symbolPrices) {
-            c.put(symbolPrice.getSymbol(),symbolPrice.getPrice());
+            c.put(symbolPrice.getSymbol(),symbolPrice.getPrice() == null ? BigDecimal.ZERO : symbolPrice.getPrice());
         }
         return c;
+    }
+
+    private BigDecimal parseControlPrice(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        String[] split = value.split(",");
+        if (split.length < 2 || split[0] == null || split[0].trim().isEmpty() || "null".equalsIgnoreCase(split[0].trim())) {
+            return null;
+        }
+        try {
+            return new BigDecimal(split[0].trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private String parseControlTime(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        String[] split = value.split(",");
+        if (split.length < 2 || split[1] == null || split[1].trim().isEmpty() || "null".equalsIgnoreCase(split[1].trim())) {
+            return null;
+        }
+        try {
+            Long.parseLong(split[1].trim());
+            return split[1].trim();
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
 

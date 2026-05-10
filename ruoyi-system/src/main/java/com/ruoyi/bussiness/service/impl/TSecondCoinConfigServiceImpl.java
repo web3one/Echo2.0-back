@@ -229,10 +229,12 @@ public class TSecondCoinConfigServiceImpl extends ServiceImpl<TSecondCoinConfigM
             BeanUtils.copyProperties(tSecondCoinConfig1 ,symbolCoinConfigVO);
             symbolCoinConfigVO.setType(2);
             symbolCoinConfigVO.setCoinType(tSecondCoinConfig1.getType());
-            BigDecimal cacheObject = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + tSecondCoinConfig1.getCoin());
+            BigDecimal cacheObject = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + tSecondCoinConfig1.getCoin()));
             symbolCoinConfigVO.setAmount(cacheObject);
             String logo = tSecondCoinConfig1.getLogo();
-            if(logo.contains("echo-res")){
+            if(StringUtils.isEmpty(logo)){
+                symbolCoinConfigVO.setLogo(logo);
+            } else if(logo.contains("echo-res")){
                 symbolCoinConfigVO.setLogo(logo);
             }else {
                 symbolCoinConfigVO.setLogo("https://echo-res.oss-cn-hongkong.aliyuncs.com/waihui"+logo.substring(logo.lastIndexOf("/"),logo.length()));
@@ -252,6 +254,23 @@ public class TSecondCoinConfigServiceImpl extends ServiceImpl<TSecondCoinConfigM
 
         }
         return rtn;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
     }
 
     @Override

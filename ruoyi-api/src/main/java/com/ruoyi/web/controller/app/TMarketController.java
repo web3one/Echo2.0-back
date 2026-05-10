@@ -56,35 +56,35 @@ public class TMarketController {
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(s.getCoin());
+            BigDecimal openPrice = getOpenPrice(s.getCoin());
             s.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
             if(s.getMarket().equals("metal")){
-                BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin());
+                BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin()));
                 s.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
             }else{
-                BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin().toLowerCase());
+                BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin().toLowerCase()));
                 s.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
             }
         }
         List<TCurrencySymbol> currencyList = tCurrencySymbolService.getSymbolList();
         for (TCurrencySymbol t:currencyList) {
-            BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + t.getCoin().toLowerCase());
+            BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + t.getCoin().toLowerCase()));
             t.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
             BigDecimal bigDecimal = stringBigDecimalHashMap.get(t.getSymbol().toLowerCase());
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(t.getCoin().toLowerCase());
+            BigDecimal openPrice = getOpenPrice(t.getCoin().toLowerCase());
             t.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
         }
         List<TContractCoin> contractList = tContractCoinService.getCoinList();
         for (TContractCoin coin:contractList) {
-            BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coin.getCoin().toLowerCase());
+            BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coin.getCoin().toLowerCase()));
             BigDecimal bigDecimal = stringBigDecimalHashMap.get(coin.getSymbol().toLowerCase());
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(coin.getCoin().toLowerCase());
+            BigDecimal openPrice = getOpenPrice(coin.getCoin().toLowerCase());
             coin.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
             coin.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
         }
@@ -93,5 +93,26 @@ public class TMarketController {
         map.put("currencyList",currencyList);
         map.put("contractList",contractList);
         return new AjaxResult(0,"success",map);
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private BigDecimal getOpenPrice(String key) {
+        return toBigDecimal(((Map) KLoader.OPEN_PRICE).get(key));
     }
 }

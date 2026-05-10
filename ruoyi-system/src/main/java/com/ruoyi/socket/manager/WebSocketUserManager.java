@@ -210,11 +210,11 @@ public class WebSocketUserManager {
         coin =coin.replace("usdt","");
         //获取跟随型控盘价格。
         String conPriceAndId = redisCache.getCacheObject("con-" +coin);
-        if(conPriceAndId!=null){
+        String[] controlParts = getValidControlParts(conPriceAndId, coin);
+        if(controlParts!=null){
             log.info("控线"+conPriceAndId);
-            String[] split = conPriceAndId.split(",");
-            BigDecimal conPrice = new BigDecimal(split[0]);
-            long time = Long.parseLong(split[1]);
+            BigDecimal conPrice = new BigDecimal(controlParts[0]);
+            long time = Long.parseLong(controlParts[1]);
             BigDecimal conPriceAdd = klineTickBean.getClose().add(conPrice);
             //如果不是这一分钟插得针 开盘价不用管 管住最高价或者最低假 和封盘价，    如果是这一分钟 每一个都替换
             Long ts = klineDTO.getTs();
@@ -493,7 +493,8 @@ public class WebSocketUserManager {
         String coin = jsonObject.getString("s").toLowerCase().replace("usdt","");
         wsVO.setSymbol(coin);
         String conPriceAndId = redisCache.getCacheObject("con-" +coin);
-        if(conPriceAndId!=null){
+        String[] controlParts = getValidControlParts(conPriceAndId, coin);
+        if(controlParts!=null){
             HashMap<String, BigDecimal> stringBigDecimalHashMap =tBotKlineModelService.getyesterdayPrice();
             BigDecimal addPrice = stringBigDecimalHashMap.get(coin + "usdt");
             if(addPrice==null){
@@ -503,7 +504,12 @@ public class WebSocketUserManager {
             klineTickBean.setHigh(new BigDecimal(jsonObject.getString("h")));
             klineTickBean.setLow(new BigDecimal(jsonObject.getString("l")));
             klineTickBean.setOpen(new BigDecimal(jsonObject.getString("o")).add(addPrice));
-            klineTickBean.setClose(KLoader.BOT_PRICE.get(coin));
+            BigDecimal botPrice = KLoader.BOT_PRICE.get(coin);
+            if (botPrice == null) {
+                botPrice = new BigDecimal(jsonObject.getString("c")).add(new BigDecimal(controlParts[0]));
+                KLoader.BOT_PRICE.put(coin, botPrice);
+            }
+            klineTickBean.setClose(botPrice);
             if(klineTickBean.getHigh().compareTo(klineTickBean.getClose())<0){
                 klineTickBean.setHigh(klineTickBean.getClose());
             }
@@ -702,9 +708,9 @@ public class WebSocketUserManager {
         tradeDataBean.setPrice(price);
         String conPriceAndId = redisCache.getCacheObject("con-" +coin);
         //是否有控制
-        if(conPriceAndId!=null){
-            String[] split = conPriceAndId.split(",");
-            tradeDataBean.setPrice(price.add(new BigDecimal(split[0])));
+        String[] controlParts = getValidControlParts(conPriceAndId, coin);
+        if(controlParts!=null){
+            tradeDataBean.setPrice(price.add(new BigDecimal(controlParts[0])));
         }else{
             //所有控线走btc的频率,也就是说如果控线了,处理btc的同时,也会处理被控制的币种.
             if(coin.equals("bnb")) {
@@ -852,5 +858,35 @@ public class WebSocketUserManager {
         String symbol = s.replace("usdt","");
         redis.setCacheObject(CachePrefix.CURRENCY_CLOSE_PRICE.getPrefix()+symbol,decimal);
         redis.setCacheObject(CachePrefix.CURRENCY_OPEN_PRICE.getPrefix()+symbol,openPrice);
+    }
+
+    private String[] getValidControlParts(String value, String coin) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+        String[] split = value.split(",");
+        if (split.length < 2
+                || StringUtils.isBlank(split[0])
+                || StringUtils.isBlank(split[1])
+                || "null".equalsIgnoreCase(split[0].trim())
+                || "null".equalsIgnoreCase(split[1].trim())) {
+            clearInvalidControlValue(coin, value);
+            return null;
+        }
+        try {
+            new BigDecimal(split[0].trim());
+            Long.parseLong(split[1].trim());
+            split[0] = split[0].trim();
+            split[1] = split[1].trim();
+            return split;
+        } catch (Exception e) {
+            clearInvalidControlValue(coin, value);
+            return null;
+        }
+    }
+
+    private void clearInvalidControlValue(String coin, String value) {
+        log.warn("Invalid control price for {}: {}, ignored and deleted", coin, value);
+        redisCache.deleteObject("con-" + coin);
     }
 }

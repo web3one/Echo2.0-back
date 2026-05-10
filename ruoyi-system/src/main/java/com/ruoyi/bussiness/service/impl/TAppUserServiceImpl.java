@@ -469,11 +469,11 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
                 }
                 BigDecimal availableAmount = asset.getAvailableAmount();
                 if (!"usdt".equals(asset.getSymbol())) {
-                    BigDecimal currencyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + asset.getSymbol());
-                    if (StringUtils.isNull(currencyPrice)) {
+                    BigDecimal currencyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + asset.getSymbol()));
+                    if (currencyPrice.compareTo(BigDecimal.ZERO) == 0) {
                         currencyPrice = BigDecimal.ONE;
                     }
-                    asset.setExchageAmount(availableAmount.multiply(currencyPrice));
+                    asset.setExchageAmount((availableAmount == null ? BigDecimal.ZERO : availableAmount).multiply(currencyPrice));
                 } else {
                     asset.setExchageAmount(asset.getAvailableAmount());
                 }
@@ -858,5 +858,22 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
             }
         }
         return list;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
     }
 }
