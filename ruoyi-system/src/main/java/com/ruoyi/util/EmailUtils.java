@@ -1,5 +1,7 @@
 package com.ruoyi.util;
 
+import cn.hutool.http.HttpUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.ruoyi.bussiness.domain.setting.EmailSetting;
 import com.ruoyi.bussiness.domain.setting.Setting;
@@ -43,6 +45,9 @@ import java.util.regex.Pattern;
 public class EmailUtils {
 
     private static final Logger log = LoggerFactory.getLogger(EmailUtils.class);
+    private static final String APIHZ_SEND_URL = "https://cn.apihz.cn/api/mail/yzm1.php";
+    private static final String APIHZ_VERIFY_URL = "https://cn.apihz.cn/api/mail/yzm2.php";
+    private static final String APIHZ_CODE_MARKER = "__APIHZ_EMAIL_CODE__";
 
     /**
      * @description 验证邮箱
@@ -135,6 +140,10 @@ public class EmailUtils {
             throw new IllegalStateException("EMAIL_SETTING is empty");
         }
         EmailSetting emailSetting = JSONUtil.toBean(setting.getSettingValue(), EmailSetting.class);
+        if (isApiHzEmailSetting(emailSetting)) {
+            sendApiHzEmailCode(redisCache, email, type, randomCode, emailSetting);
+            return "sent";
+        }
         String appName = trimToEmpty(emailSetting.getMailAppName());
         String host = trimToEmpty(emailSetting.getMailHost());
         String port = trimToEmpty(emailSetting.getMailPort());
@@ -230,9 +239,36 @@ public class EmailUtils {
 
     }
 
+    public static boolean verifyEmailCode(RedisCache redisCache, String email, String type, String code) {
+        if (redisCache == null || StringUtils.isBlank(email) || StringUtils.isBlank(type) || StringUtils.isBlank(code)) {
+            return false;
+        }
+        String emailCodeKey = CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.valueOf(type) + email;
+        if (!Boolean.TRUE.equals(redisCache.hasKey(emailCodeKey))) {
+            return false;
+        }
+        Object cacheValue = redisCache.getCacheObject(emailCodeKey);
+        String validCode = cacheValue == null ? "" : cacheValue.toString();
+        boolean verified;
+        if (APIHZ_CODE_MARKER.equals(validCode)) {
+            verified = verifyApiHzEmailCode(email, code);
+        } else {
+            verified = code.equalsIgnoreCase(validCode);
+        }
+        if (verified) {
+            redisCache.deleteObject(emailCodeKey);
+        }
+        return verified;
+    }
+
     private static void cacheEmailCode(RedisCache redisCache, String email, String type, String randomCode) {
         redisCache.setCacheObject(CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.valueOf(type) + email,
                 randomCode, CacheConstants.REGISTER_CODE_TIME, TimeUnit.SECONDS);
+    }
+
+    private static void cacheApiHzEmailCodeMarker(RedisCache redisCache, String email, String type) {
+        redisCache.setCacheObject(CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.valueOf(type) + email,
+                APIHZ_CODE_MARKER, CacheConstants.REGISTER_CODE_TIME, TimeUnit.SECONDS);
     }
 
     private static void cacheLocalEmailCode(RedisCache redisCache, String email, String type, String randomCode, String reason) {
@@ -253,6 +289,73 @@ public class EmailUtils {
 
     private static String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static boolean isApiHzEmailSetting(EmailSetting emailSetting) {
+        return emailSetting != null
+                && StringUtils.isNotBlank(emailSetting.getApiId())
+                && StringUtils.isNotBlank(emailSetting.getApiKey());
+    }
+
+    private static void sendApiHzEmailCode(RedisCache redisCache, String email, String type, String randomCode, EmailSetting emailSetting) {
+        String apiUrl = StringUtils.isNotBlank(emailSetting.getApiUrl()) ? emailSetting.getApiUrl().trim() : APIHZ_SEND_URL;
+        String name = StringUtils.isNotBlank(emailSetting.getSenderName()) ? emailSetting.getSenderName().trim() : "XAgent";
+        String title = name + " verification code";
+        Map<String, Object> params = new HashMap<>(16);
+        params.put("id", emailSetting.getApiId().trim());
+        params.put("key", emailSetting.getApiKey().trim());
+        params.put("name", name);
+        params.put("tomail", email);
+        params.put("title", title);
+        params.put("headtitle", title);
+        params.put("text", "You are requesting an XAgent verification code. It is valid for five minutes.");
+        params.put("foot1", name);
+        params.put("foot2", "Security verification");
+        try {
+            String body = HttpUtil.createPost(apiUrl).form(params).timeout(10000).execute().body();
+            JSONObject response = JSONUtil.parseObj(body);
+            Integer code = response.getInt("code");
+            if (code != null && code == 200) {
+                cacheApiHzEmailCodeMarker(redisCache, email, type);
+                return;
+            }
+            String msg = response.getStr("msg", body);
+            throw new RuntimeException("APIHZ send failed: " + msg);
+        } catch (Exception e) {
+            if (isLocalEmailFallbackEnabled()) {
+                cacheLocalEmailCode(redisCache, email, type, randomCode,
+                        "APIHZ send failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                return;
+            }
+            throw new RuntimeException("APIHZ send email failed: " + e.getMessage(), e);
+        }
+    }
+
+    private static boolean verifyApiHzEmailCode(String email, String code) {
+        try {
+            SettingService settingService = SpringContextUtil.getBean(SettingService.class);
+            Setting setting = settingService.get(SettingEnum.EMAIL_SETTING.name());
+            if (setting == null || StringUtils.isBlank(setting.getSettingValue())) {
+                return false;
+            }
+            EmailSetting emailSetting = JSONUtil.toBean(setting.getSettingValue(), EmailSetting.class);
+            if (!isApiHzEmailSetting(emailSetting)) {
+                return false;
+            }
+            String verifyUrl = StringUtils.isNotBlank(emailSetting.getVerifyUrl()) ? emailSetting.getVerifyUrl().trim() : APIHZ_VERIFY_URL;
+            Map<String, Object> params = new HashMap<>(8);
+            params.put("id", emailSetting.getApiId().trim());
+            params.put("key", emailSetting.getApiKey().trim());
+            params.put("mail", email);
+            params.put("code", code);
+            String body = HttpUtil.createPost(verifyUrl).form(params).timeout(10000).execute().body();
+            JSONObject response = JSONUtil.parseObj(body);
+            Integer responseCode = response.getInt("code");
+            return responseCode != null && responseCode == 200;
+        } catch (Exception e) {
+            log.warn("APIHZ verify email code failed, email={}, reason={}", email, e.getMessage());
+            return false;
+        }
     }
 
     private static String missingSmtpConfig(String host, String port, String username, String password, String templateCode) {

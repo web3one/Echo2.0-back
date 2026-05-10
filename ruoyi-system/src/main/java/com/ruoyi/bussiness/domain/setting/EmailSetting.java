@@ -8,6 +8,11 @@ import lombok.Data;
 @Data
 public class EmailSetting {
 
+    private String apiId;
+    private String apiKey;
+    private String senderName;
+    private String apiUrl;
+    private String verifyUrl;
     private String mailTemplate;
     private String mailAppName;
     private String mailUsername;

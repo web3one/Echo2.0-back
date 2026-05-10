@@ -172,18 +172,11 @@ public class TAppUserController extends ApiBaseController {
             if (StringUtils.isBlank(code)) {
                 return AjaxResult.error(MessageUtils.message("login.code_error"));
             }
-            final String registerEmailCode = String.format("%s%s", CachePrefix.EMAIL_CODE.getPrefix()+UserCodeTypeEnum.REGISTER.name(), email);
-            if (Boolean.TRUE.equals(redisCache.hasKey(registerEmailCode))) {
-                String validCode = redisCache.getCacheObject(registerEmailCode).toString();
-                if (!code.equalsIgnoreCase(validCode)) {
-                    return AjaxResult.error(MessageUtils.message("login.code_error"));
-                }
-            } else {
+            if (!EmailUtils.verifyEmailCode(redisCache, email, UserCodeTypeEnum.REGISTER.name(), code)) {
                 log.debug("register via email error");
                 return AjaxResult.error(MessageUtils.message("login.code_error"));
             }
 
-            redisCache.deleteObject(registerEmailCode);
             user.setLoginName(email);
             newUser.setLoginName(email);
             newUser.setEmail(email);
@@ -638,20 +631,13 @@ public class TAppUserController extends ApiBaseController {
             if (null == tAppUser1) {
                 return MessageUtils.message("login.email.not_register");
             }
-            String emailLoginkey = String.format("%s%s", CachePrefix.EMAIL_CODE.getPrefix()+ UserCodeTypeEnum.LOGIN.name(), email);
-            if (Boolean.TRUE.equals(redisCache.hasKey(emailLoginkey))) {
-                String validCode = redisCache.getCacheObject(emailLoginkey).toString();
-                if (!code.equalsIgnoreCase(validCode)) {
-                    return MessageUtils.message("login.code_error");
-                }
-            } else {
-                return MessageUtils.message("login.code_error");
-            }
             if (StringUtils.isBlank(tAppUser1.getLoginPassword())
                     || !SecurityUtils.matchesPassword(loginPassword, tAppUser1.getLoginPassword())) {
                 return MessageUtils.message("user.password.not.match");
             }
-            redisCache.deleteObject(emailLoginkey);
+            if (!EmailUtils.verifyEmailCode(redisCache, email, UserCodeTypeEnum.LOGIN.name(), code)) {
+                return MessageUtils.message("login.code_error");
+            }
         }
 
         return msg;
