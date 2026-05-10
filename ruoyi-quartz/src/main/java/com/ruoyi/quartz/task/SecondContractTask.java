@@ -53,17 +53,7 @@ public class SecondContractTask {
 
     public void secondContract() {
         try {
-            //查找所有正在参与的秒合约订单  状态为参与中  结束时间小于当前时间
-            List<TSecondContractOrder> list = secondContractOrderService.list(
-                    new LambdaQueryWrapper<TSecondContractOrder>()
-                            .eq(TSecondContractOrder::getStatus, "0")
-                            .lt(TSecondContractOrder::getCloseTime,new Date().getTime())
-            );
-            for (TSecondContractOrder order : list) {
-                TAppUser tAppUser = appUserService.selectTAppUserByUserId(order.getUserId());
-                settlement(order, tAppUser);
-            }
-
+            secondContractOrderService.settleExpiredOrders(null);
         } catch (Exception e) {
             e.printStackTrace();
         }

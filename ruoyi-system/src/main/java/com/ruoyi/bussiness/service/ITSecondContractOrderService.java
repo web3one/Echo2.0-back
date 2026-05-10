@@ -62,4 +62,6 @@ public interface ITSecondContractOrderService extends IService<TSecondContractOr
     public int deleteTSecondContractOrderById(Long id);
 
     String createSecondContractOrder(TSecondContractOrder tSecondContractOrder);
+
+    void settleExpiredOrders(Long userId);
 }

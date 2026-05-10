@@ -9,9 +9,11 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.ruoyi.bussiness.domain.*;
 import com.ruoyi.bussiness.domain.setting.AddMosaicSetting;
@@ -30,9 +32,12 @@ import com.ruoyi.common.enums.SettingEnum;
 import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.MessageUtils;
 import com.ruoyi.common.utils.OrderUtils;
+import com.ruoyi.common.utils.RedisUtil;
 import com.ruoyi.common.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
@@ -63,6 +68,12 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
     private RedisCache redisCache;
     @Resource
     private SettingService settingService;
+    @Resource
+    private ITAppUserDetailService appUserDetailService;
+    @Resource
+    private RedisUtil redisUtil;
+    @Value("${api-redis-stream.names:}")
+    private String redisStreamNames;
 
 
     /**
@@ -148,6 +159,32 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void settleExpiredOrders(Long userId) {
+        LambdaQueryWrapper<TSecondContractOrder> wrapper = new LambdaQueryWrapper<TSecondContractOrder>()
+                .eq(TSecondContractOrder::getStatus, CommonEnum.ZERO.getCode())
+                .le(TSecondContractOrder::getCloseTime, new Date().getTime());
+        if (Objects.nonNull(userId)) {
+            wrapper.eq(TSecondContractOrder::getUserId, userId);
+        }
+        List<TSecondContractOrder> list = this.list(wrapper);
+        for (TSecondContractOrder order : list) {
+            String lockKey = CachePrefix.ORDER_SECOND_CONTRACT.getPrefix() + "settle:" + order.getId();
+            if (!redisCache.tryLock(lockKey, order.getId(), 30000)) {
+                continue;
+            }
+            TSecondContractOrder latestOrder = this.getById(order.getId());
+            if (Objects.isNull(latestOrder) || !CommonEnum.ZERO.getCode().equals(latestOrder.getStatus())) {
+                continue;
+            }
+            TAppUser user = appUserMapper.selectTAppUserByUserId(latestOrder.getUserId());
+            if (Objects.nonNull(user)) {
+                settleSecondContractOrder(latestOrder, user);
+            }
+        }
+    }
+
+    @Override
     public String createSecondContractOrder(TSecondContractOrder order) {
         log.info("下单"+ JSONObject.toJSONString(order));
         String validateResult = validateSecondContractOrder(order);
@@ -199,7 +236,7 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
             //当前币种最新价格
             BigDecimal price = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + order.getCoinSymbol().toLowerCase());
             TSecondCoinConfig one = tSecondCoinConfigMapper.selectOne(new LambdaQueryWrapper<TSecondCoinConfig>().eq(TSecondCoinConfig::getCoin, order.getCoinSymbol().toUpperCase()));
-            if(one != null && 2!=one.getType()){
+            if (Objects.nonNull(one) && !Integer.valueOf(2).equals(one.getType())) {
                 price=redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + order.getCoinSymbol().toUpperCase());
             }
             if (Objects.isNull(price) || price.compareTo(BigDecimal.ZERO) <= 0) {
@@ -259,5 +296,198 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
             return "Order amount is required";
         }
         return "success";
+    }
+
+    private void settleSecondContractOrder(TSecondContractOrder order, TAppUser user) {
+        try {
+            BigDecimal betAmount = order.getBetAmount();
+            BigDecimal rate = Objects.isNull(order.getRate()) ? BigDecimal.ZERO : order.getRate();
+            BigDecimal openPrice = order.getOpenPrice();
+            Integer sign = Objects.isNull(order.getSign()) ? CommonEnum.ZERO.getCode() : order.getSign();
+            Integer type = Integer.parseInt(order.getBetContent());
+            BigDecimal closePrice = getSecondContractPrice(order.getCoinSymbol());
+            if (Objects.isNull(closePrice) || closePrice.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("second contract close price is not ready, orderId:{}, coin:{}", order.getId(), order.getCoinSymbol());
+                return;
+            }
+
+            TAppUserDetail userDetail = appUserDetailService.getOne(
+                    new LambdaQueryWrapper<TAppUserDetail>().eq(TAppUserDetail::getUserId, user.getUserId()));
+            int winNum = Objects.isNull(userDetail) || Objects.isNull(userDetail.getWinNum()) ? 0 : userDetail.getWinNum();
+            int loseNum = Objects.isNull(userDetail) || Objects.isNull(userDetail.getLoseNum()) ? 0 : userDetail.getLoseNum();
+            Integer buff = Objects.isNull(user.getBuff()) ? CommonEnum.ZERO.getCode() : user.getBuff();
+
+            if (CommonEnum.ZERO.getCode().equals(buff)) {
+                if (winNum > 0 && CommonEnum.ZERO.getCode().equals(sign)) {
+                    userDetail.setWinNum(winNum - 1);
+                    appUserDetailService.updateById(userDetail);
+                    closePrice = getClosePrice(openPrice, closePrice, CommonEnum.TRUE.getCode(), type);
+                    sign = CommonEnum.TRUE.getCode();
+                }
+                if (loseNum > 0 && CommonEnum.ZERO.getCode().equals(sign)) {
+                    userDetail.setLoseNum(loseNum - 1);
+                    appUserDetailService.updateById(userDetail);
+                    closePrice = getClosePrice(openPrice, closePrice, 2, type);
+                    sign = 2;
+                }
+            }
+            if (CommonEnum.TRUE.getCode().equals(buff)) {
+                sign = CommonEnum.TRUE.getCode();
+                closePrice = getClosePrice(openPrice, closePrice, CommonEnum.TRUE.getCode(), type);
+            }
+            if (Integer.valueOf(2).equals(buff)) {
+                sign = 2;
+                closePrice = getClosePrice(openPrice, closePrice, 2, type);
+            }
+
+            String openResult = "1";
+            BigDecimal returnAmount = BigDecimal.ZERO;
+            if (CommonEnum.TRUE.getCode().equals(type)) {
+                if (openPrice.compareTo(closePrice) > 0) {
+                    openResult = "2";
+                    if (rate.compareTo(BigDecimal.ONE) < 0) {
+                        returnAmount = betAmount.multiply(BigDecimal.ONE.subtract(rate));
+                    }
+                    if (rate.compareTo(BigDecimal.ONE) >= 0) {
+                        returnAmount = BigDecimal.ZERO;
+                    }
+                    if (Boolean.TRUE.equals(order.getRateFlag())) {
+                        returnAmount = BigDecimal.ZERO;
+                    }
+                }
+                if (openPrice.compareTo(closePrice) < 0) {
+                    if (rate.compareTo(BigDecimal.ONE) < 0) {
+                        returnAmount = betAmount.multiply(BigDecimal.ONE.add(rate));
+                    }
+                    if (rate.compareTo(BigDecimal.ONE) >= 0) {
+                        returnAmount = betAmount.add(betAmount.multiply(rate));
+                    }
+                }
+                if (openPrice.compareTo(closePrice) == 0) {
+                    openResult = "3";
+                    returnAmount = betAmount;
+                }
+            } else {
+                if (openPrice.compareTo(closePrice) > 0) {
+                    if (rate.compareTo(BigDecimal.ONE) < 0) {
+                        returnAmount = betAmount.multiply(BigDecimal.ONE.add(rate));
+                    }
+                    if (rate.compareTo(BigDecimal.ONE) >= 0) {
+                        returnAmount = betAmount.add(betAmount.multiply(rate));
+                    }
+                }
+                if (openPrice.compareTo(closePrice) < 0) {
+                    openResult = "2";
+                    if (rate.compareTo(BigDecimal.ONE) < 0) {
+                        returnAmount = betAmount.multiply(BigDecimal.ONE.subtract(rate));
+                    }
+                    if (rate.compareTo(BigDecimal.ONE) >= 0) {
+                        returnAmount = BigDecimal.ZERO;
+                    }
+                    if (Boolean.TRUE.equals(order.getRateFlag())) {
+                        returnAmount = BigDecimal.ZERO;
+                    }
+                }
+                if (openPrice.compareTo(closePrice) == 0) {
+                    openResult = "3";
+                    returnAmount = betAmount;
+                }
+            }
+
+            if (returnAmount.compareTo(BigDecimal.ZERO) > 0) {
+                TAppAsset appAsset = assetService.getOne(new LambdaQueryWrapper<TAppAsset>()
+                        .eq(TAppAsset::getUserId, order.getUserId())
+                        .eq(TAppAsset::getSymbol, order.getBaseSymbol().toLowerCase())
+                        .eq(TAppAsset::getType, AssetEnum.CONTRACT_ASSETS.getCode()));
+                if (Objects.isNull(appAsset)) {
+                    assetService.createAsset(user, order.getBaseSymbol().toLowerCase(), AssetEnum.CONTRACT_ASSETS.getCode());
+                    appAsset = assetService.getOne(new LambdaQueryWrapper<TAppAsset>()
+                            .eq(TAppAsset::getUserId, order.getUserId())
+                            .eq(TAppAsset::getSymbol, order.getBaseSymbol().toLowerCase())
+                            .eq(TAppAsset::getType, AssetEnum.CONTRACT_ASSETS.getCode()));
+                }
+                BigDecimal availableAmount = appAsset.getAvailableAmount();
+                appAsset.setAmout(appAsset.getAmout().add(returnAmount));
+                appAsset.setAvailableAmount(availableAmount.add(returnAmount));
+                assetService.updateTAppAsset(appAsset);
+                appWalletRecordService.generateRecord(order.getUserId(), returnAmount, RecordEnum.OPTION_SETTLEMENT.getCode(), "", order.getOrderNo(), RecordEnum.OPTION_SETTLEMENT.getInfo(), availableAmount, availableAmount.add(returnAmount), order.getBaseSymbol(), user.getAdminParentIds());
+            }
+
+            order.setOpenResult(openResult);
+            order.setClosePrice(closePrice);
+            order.setStatus(CommonEnum.TRUE.getCode());
+            order.setRewardAmount(returnAmount);
+            order.setSign(sign);
+            this.updateById(order);
+            if (StringUtils.isNotEmpty(redisStreamNames)) {
+                HashMap<String, Object> object = new HashMap<>();
+                object.put("settlement", "3");
+                redisUtil.addStream(redisStreamNames, object);
+            }
+        } catch (Exception e) {
+            log.error("settle second contract order failed, orderId:{}", order.getId(), e);
+        }
+    }
+
+    private BigDecimal getSecondContractPrice(String coinSymbol) {
+        if (StringUtils.isEmpty(coinSymbol)) {
+            return null;
+        }
+        BigDecimal price = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coinSymbol.toLowerCase());
+        TSecondCoinConfig config = tSecondCoinConfigMapper.selectOne(
+                new LambdaQueryWrapper<TSecondCoinConfig>().eq(TSecondCoinConfig::getCoin, coinSymbol.toUpperCase()));
+        if (Objects.nonNull(config) && !Integer.valueOf(2).equals(config.getType())) {
+            BigDecimal upperPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coinSymbol.toUpperCase());
+            if (Objects.nonNull(upperPrice)) {
+                price = upperPrice;
+            }
+        }
+        if (Objects.isNull(price)) {
+            price = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coinSymbol.toUpperCase());
+        }
+        return price;
+    }
+
+    private static BigDecimal getClosePrice(BigDecimal openPrice, BigDecimal closePrice, Integer sign, Integer type) {
+        if (sign == 1) {
+            if ((1 == type && closePrice.compareTo(openPrice) > 0) || (0 == type && closePrice.compareTo(openPrice) < 0)) {
+                return closePrice;
+            }
+        }
+        if (sign == 2) {
+            if ((1 == type && closePrice.compareTo(openPrice) < 0) || (0 == type && closePrice.compareTo(openPrice) > 0)) {
+                return closePrice;
+            }
+        }
+
+        BigDecimal diff;
+        int digits = getNumberDecimalDigits(openPrice.stripTrailingZeros().toPlainString());
+        if (digits == 0) {
+            diff = BigDecimal.valueOf(ThreadLocalRandom.current().nextDouble());
+        } else {
+            diff = BigDecimal.valueOf((double) 1 / Math.pow(10, digits) * (ThreadLocalRandom.current().nextInt(10) + 1));
+        }
+
+        if (sign == 1) {
+            if (1 == type) {
+                closePrice = openPrice.add(diff);
+            } else if (0 == type) {
+                closePrice = openPrice.subtract(diff);
+            }
+        } else {
+            if (1 == type) {
+                closePrice = openPrice.subtract(diff);
+            } else if (0 == type) {
+                closePrice = openPrice.add(diff);
+            }
+        }
+        return closePrice;
+    }
+
+    private static int getNumberDecimalDigits(String number) {
+        if (!number.contains(".")) {
+            return 0;
+        }
+        return number.length() - (number.indexOf(".") + 1);
     }
 }
