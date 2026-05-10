@@ -3,7 +3,7 @@ package com.ruoyi.config;
 import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
-import org.flywaydb.core.api.output.MigrateResult;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import javax.sql.DataSource;
+import java.util.Arrays;
 
 /**
  * Flyway 配置：显式绑定到 masterDataSource，绕开 DynamicDataSource 路由问题。
@@ -45,9 +46,12 @@ public class FlywayConfig {
     @Value("${spring.flyway.out-of-order:false}")
     private boolean outOfOrder;
 
+    @Value("${spring.flyway.ignore-migration-patterns:*:missing}")
+    private String ignoreMigrationPatterns;
+
     @Bean(initMethod = "migrate")
     public Flyway flyway(@Qualifier("masterDataSource") DataSource masterDataSource) {
-        Flyway flyway = Flyway.configure()
+        FluentConfiguration configuration = Flyway.configure()
                 .dataSource(masterDataSource)
                 .locations(locations.split(","))
                 .baselineOnMigrate(baselineOnMigrate)
@@ -56,10 +60,22 @@ public class FlywayConfig {
                 .validateOnMigrate(validateOnMigrate)
                 .encoding(encoding)
                 .table(table)
-                .outOfOrder(outOfOrder)
-                .load();
+                .outOfOrder(outOfOrder);
 
-        log.info("Flyway initialized: locations={}, baselineVersion={}", locations, baselineVersion);
+        if (ignoreMigrationPatterns != null && !ignoreMigrationPatterns.trim().isEmpty()) {
+            String[] patterns = Arrays.stream(ignoreMigrationPatterns.split(","))
+                    .map(String::trim)
+                    .filter(pattern -> !pattern.isEmpty())
+                    .toArray(String[]::new);
+            if (patterns.length > 0) {
+                configuration.ignoreMigrationPatterns(patterns);
+            }
+        }
+
+        Flyway flyway = configuration.load();
+
+        log.info("Flyway initialized: locations={}, baselineVersion={}, ignoreMigrationPatterns={}",
+                locations, baselineVersion, ignoreMigrationPatterns);
         MigrationInfo[] pending = flyway.info().pending();
         if (pending.length > 0) {
             log.info("Flyway pending migrations: {}", pending.length);
