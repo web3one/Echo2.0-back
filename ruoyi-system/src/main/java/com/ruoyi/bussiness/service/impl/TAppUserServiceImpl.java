@@ -649,6 +649,22 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
     @Override
     @Transactional
     public int addTAppUser(TAppUser tAppUser) {
+        String loginName = tAppUser.getLoginName();
+        if (StringUtils.isBlank(loginName)) {
+            throw new ServiceException(MessageUtils.message("user.register.email.format"));
+        }
+        loginName = loginName.trim().toLowerCase(Locale.ROOT);
+        if (!EmailUtils.checkEmail(loginName)) {
+            throw new ServiceException(MessageUtils.message("user.register.email.format"));
+        }
+        if (tAppUserMapper.selectByUserLoginName(loginName) != null) {
+            throw new ServiceException(MessageUtils.message("user.user_name_exisit"));
+        }
+        if (checkEmailUnique(loginName) > 0) {
+            throw new ServiceException(MessageUtils.message("user.register.email.exisit"));
+        }
+        tAppUser.setLoginName(loginName);
+        tAppUser.setEmail(loginName);
         if (StringUtils.isNotBlank(tAppUser.getAdminParentIds())) {
             SysUser sysUser = sysUserService.selectUserById(Long.parseLong(tAppUser.getAdminParentIds()));
             if (sysUser != null) {
