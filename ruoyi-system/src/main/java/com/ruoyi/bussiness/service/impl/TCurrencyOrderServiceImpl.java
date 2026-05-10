@@ -25,6 +25,7 @@ import com.ruoyi.common.enums.SettingEnum;
 import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.MessageUtils;
 import com.ruoyi.common.utils.OrderUtils;
+import com.ruoyi.common.utils.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -127,8 +128,17 @@ public class TCurrencyOrderServiceImpl extends ServiceImpl<TCurrencyOrderMapper,
     @Transactional
     @Override
     public String submitCurrencyOrder(TAppUser user, TCurrencyOrder tCurrencyOrder) {
-        String symbol = tCurrencyOrder.getSymbol();
-        String coin = tCurrencyOrder.getCoin();
+        if (Objects.isNull(user)) {
+            return MessageUtils.message("user.notfound");
+        }
+        String validateResult = validateCurrencyOrder(tCurrencyOrder);
+        if (!"success".equals(validateResult)) {
+            return validateResult;
+        }
+        String symbol = tCurrencyOrder.getSymbol().toLowerCase();
+        String coin = tCurrencyOrder.getCoin().toLowerCase();
+        tCurrencyOrder.setSymbol(symbol);
+        tCurrencyOrder.setCoin(coin);
         Integer delegateType = tCurrencyOrder.getDelegateType();
         TCurrencySymbol currencySymbol = tCurrencySymbolMapper.selectOne(new LambdaQueryWrapper<TCurrencySymbol>().eq(TCurrencySymbol::getCoin, symbol).eq(TCurrencySymbol::getBaseCoin, coin).eq(TCurrencySymbol::getEnable, "1"));
         if (Objects.isNull(currencySymbol)) {
@@ -137,10 +147,14 @@ public class TCurrencyOrderServiceImpl extends ServiceImpl<TCurrencyOrderMapper,
         //  111
         BigDecimal symolSettle = tCurrencyOrder.getSymbol().equals("usdt") ? BigDecimal.ONE : redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + tCurrencyOrder.getSymbol());
         BigDecimal coinSettle = tCurrencyOrder.getCoin().equals("usdt") ? BigDecimal.ONE : redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + tCurrencyOrder.getCoin());
+        if (Objects.isNull(symolSettle) || Objects.isNull(coinSettle) || symolSettle.compareTo(BigDecimal.ZERO) <= 0 || coinSettle.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Price is not ready";
+        }
         BigDecimal settlePrice = symolSettle.divide(coinSettle, 8, RoundingMode.DOWN);
 
-        //校验
-
+        if (Objects.isNull(tCurrencyOrder.getDelegateValue()) && Objects.nonNull(tCurrencyOrder.getDelegatePrice()) && Objects.nonNull(tCurrencyOrder.getDelegateTotal())) {
+            tCurrencyOrder.setDelegateValue(tCurrencyOrder.getDelegatePrice().multiply(tCurrencyOrder.getDelegateTotal()));
+        }
 
         String result = checkOrder(tCurrencyOrder, currencySymbol, settlePrice);
         if (!result.equals("success")) {
@@ -164,6 +178,12 @@ public class TCurrencyOrderServiceImpl extends ServiceImpl<TCurrencyOrderMapper,
         TAppAsset addAsset = tAppAssetService.getOne(new LambdaQueryWrapper<TAppAsset>().eq(TAppAsset::getUserId, userId).eq(TAppAsset::getSymbol, tCurrencyOrder.getSymbol()).eq(TAppAsset::getType, AssetEnum.PLATFORM_ASSETS.getCode()));
         //查询结算币种资产
         TAppAsset subtractAsset = tAppAssetService.getOne(new LambdaQueryWrapper<TAppAsset>().eq(TAppAsset::getUserId, userId).eq(TAppAsset::getSymbol, tCurrencyOrder.getCoin()).eq(TAppAsset::getType, AssetEnum.PLATFORM_ASSETS.getCode()));
+        if (tCurrencyOrder.getType() == 0 && Objects.isNull(subtractAsset)) {
+            return MessageUtils.message("currency.balance.deficiency", tCurrencyOrder.getCoin().toUpperCase());
+        }
+        if (tCurrencyOrder.getType() == 1 && Objects.isNull(addAsset)) {
+            return MessageUtils.message("currency.balance.deficiency", tCurrencyOrder.getSymbol().toUpperCase());
+        }
 
         BigDecimal delegatePrice = tCurrencyOrder.getDelegatePrice();
         BigDecimal delegateTotal = tCurrencyOrder.getDelegateTotal();
@@ -245,6 +265,35 @@ public class TCurrencyOrderServiceImpl extends ServiceImpl<TCurrencyOrderMapper,
         return "success";
     }
 
+    private String validateCurrencyOrder(TCurrencyOrder order) {
+        if (Objects.isNull(order)) {
+            return "Order data is required";
+        }
+        if (StringUtils.isEmpty(order.getSymbol()) || StringUtils.isEmpty(order.getCoin())) {
+            return "Trading pair is not ready";
+        }
+        if (Objects.isNull(order.getType()) || (order.getType() != 0 && order.getType() != 1)) {
+            return "Order side is required";
+        }
+        if (Objects.isNull(order.getDelegateType()) || (order.getDelegateType() != 0 && order.getDelegateType() != 1)) {
+            return "Order type is required";
+        }
+        if (order.getDelegateType() == 0 && isNonPositive(order.getDelegatePrice())) {
+            return "Order price is required";
+        }
+        if (order.getType() == 0 && order.getDelegateType() == 1 && isNonPositive(order.getDelegateValue())) {
+            return "Order amount is required";
+        }
+        if ((order.getType() == 1 || order.getDelegateType() == 0) && isNonPositive(order.getDelegateTotal())) {
+            return "Order quantity is required";
+        }
+        return "success";
+    }
+
+    private boolean isNonPositive(BigDecimal value) {
+        return Objects.isNull(value) || value.compareTo(BigDecimal.ZERO) <= 0;
+    }
+
     /**
      * 币种校验
      *
@@ -268,16 +317,23 @@ public class TCurrencyOrderServiceImpl extends ServiceImpl<TCurrencyOrderMapper,
                 return MessageUtils.message("order.sell.min.error", minSell);
             }
         } else {
-            if(deleType==1){
-                tCurrencyOrder.setDelegateTotal(tCurrencyOrder.getDelegateValue().divide(settlePrice, 6, RoundingMode.DOWN));
+            BigDecimal delegateValue = tCurrencyOrder.getDelegateValue();
+            if (Objects.isNull(delegateValue) && Objects.nonNull(tCurrencyOrder.getDelegatePrice()) && Objects.nonNull(tCurrencyOrder.getDelegateTotal())) {
+                delegateValue = tCurrencyOrder.getDelegatePrice().multiply(tCurrencyOrder.getDelegateTotal());
+                tCurrencyOrder.setDelegateValue(delegateValue);
             }
-            //最小下单量
-            if (tCurrencyOrder.getDelegateTotal().compareTo(currencySymbol.getOrderMin()) < 0) {
+            if (Objects.isNull(delegateValue) || delegateValue.compareTo(BigDecimal.ZERO) <= 0) {
+                return "Order amount is required";
+            }
+            // 买入按结算币成交金额校验，例如 BTC/USDT 市价买入输入 1000 USDT 时，不再用折算后的 BTC 数量去比较。
+            if (Objects.nonNull(currencySymbol.getOrderMin()) && delegateValue.compareTo(currencySymbol.getOrderMin()) < 0) {
                 return MessageUtils.message("currency.order.min.error", currencySymbol.getOrderMin());
             }
-            //最大下单量
-            if (tCurrencyOrder.getDelegateTotal().compareTo(currencySymbol.getOrderMax()) > 0) {
-                MessageUtils.message("currency.order.max.error", currencySymbol.getOrderMax());
+            if (Objects.nonNull(currencySymbol.getOrderMax()) && delegateValue.compareTo(currencySymbol.getOrderMax()) > 0) {
+                return MessageUtils.message("currency.order.max.error", currencySymbol.getOrderMax());
+            }
+            if(deleType==1){
+                tCurrencyOrder.setDelegateTotal(delegateValue.divide(settlePrice, 6, RoundingMode.DOWN));
             }
         }
 //        Integer delegateType = tCurrencyOrder.getDelegateType();

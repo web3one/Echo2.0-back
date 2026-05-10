@@ -207,9 +207,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </where>
     </select>
 
-    <insert id="insertTAppUser" parameterType="TAppUser" useGeneratedKeys="true" keyProperty="userId">
+    <insert id="insertTAppUser" parameterType="TAppUser">
         insert into t_app_user
         <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="userId != null">user_id,</if>
             <if test="loginName != null">login_name,</if>
             <if test="loginPassword != null">login_password,</if>
             <if test="phone != null">phone,</if>
@@ -235,8 +236,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="searchValue != null">search_value,</if>
             <if test="isBlack != null">is_black,</if>
             <if test="rechargeAmont != null">recharge_amont,</if>
-         </trim>
+        </trim>
         <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="userId != null">#{userId},</if>
             <if test="loginName != null">#{loginName},</if>
             <if test="loginPassword != null">#{loginPassword},</if>
             <if test="phone != null">#{phone},</if>

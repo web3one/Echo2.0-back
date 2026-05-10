@@ -15,6 +15,10 @@ import com.ruoyi.common.utils.SpringContextUtil;
 import com.ruoyi.common.utils.sms.SmsSenderUtil;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.ui.freemarker.FreeMarkerTemplateUtils;
 
 import javax.mail.*;
@@ -38,6 +42,7 @@ import java.util.regex.Pattern;
  */
 public class EmailUtils {
 
+    private static final Logger log = LoggerFactory.getLogger(EmailUtils.class);
 
     /**
      * @description 验证邮箱
@@ -116,13 +121,17 @@ public class EmailUtils {
 //    }
 
 
-    public static void formMail(String email,String type) {
+    public static String formMail(String email,String type) {
         RedisCache redisCache = SpringContextUtil.getBean(RedisCache.class);
         SettingService settingService = SpringContextUtil.getBean(SettingService.class);
         String randomCode = String.valueOf(SmsSenderUtil.getRandomNumber(100000, 999999));
         TAppUserServiceImpl bean = SpringContextUtil.getBean(TAppUserServiceImpl.class);
         Setting setting = settingService.get(SettingEnum.EMAIL_SETTING.name());
         if (setting == null || StringUtils.isBlank(setting.getSettingValue())) {
+            if (isLocalEmailFallbackEnabled()) {
+                cacheLocalEmailCode(redisCache, email, type, randomCode, "EMAIL_SETTING is empty");
+                return randomCode;
+            }
             throw new IllegalStateException("EMAIL_SETTING is empty");
         }
         EmailSetting emailSetting = JSONUtil.toBean(setting.getSettingValue(), EmailSetting.class);
@@ -180,6 +189,11 @@ public class EmailUtils {
             transport.connect(host, portNumber, username, password);
             transport.sendMessage(message,message.getAllRecipients());
         } catch (Exception e) {
+            if (isLocalEmailFallbackEnabled()) {
+                cacheLocalEmailCode(redisCache, email, type, randomCode,
+                        e.getClass().getSimpleName() + ": " + e.getMessage());
+                return randomCode;
+            }
             throw new RuntimeException("Send email failed via host=" + host
                     + ", port=" + port
                     + ", username=" + mask(username)
@@ -194,8 +208,30 @@ public class EmailUtils {
                 }
             }
         }
-        redisCache.setCacheObject(CachePrefix.EMAIL_CODE.getPrefix()+ UserCodeTypeEnum.valueOf(type)+ email, randomCode, CacheConstants.REGISTER_CODE_TIME, TimeUnit.SECONDS);
+        cacheEmailCode(redisCache, email, type, randomCode);
+        return randomCode;
 
+    }
+
+    private static void cacheEmailCode(RedisCache redisCache, String email, String type, String randomCode) {
+        redisCache.setCacheObject(CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.valueOf(type) + email,
+                randomCode, CacheConstants.REGISTER_CODE_TIME, TimeUnit.SECONDS);
+    }
+
+    private static void cacheLocalEmailCode(RedisCache redisCache, String email, String type, String randomCode, String reason) {
+        cacheEmailCode(redisCache, email, type, randomCode);
+        log.warn("Local email code fallback enabled, type={}, email={}, code={}, reason={}",
+                type, email, randomCode, reason);
+    }
+
+    private static boolean isLocalEmailFallbackEnabled() {
+        try {
+            Environment environment = SpringContextUtil.getBean(Environment.class);
+            Boolean enabled = environment.getProperty("email.local-fallback.enabled", Boolean.class, false);
+            return Boolean.TRUE.equals(enabled) || environment.acceptsProfiles(Profiles.of("dev", "local"));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static String mask(String value) {

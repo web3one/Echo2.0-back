@@ -18,6 +18,7 @@ import com.ruoyi.common.enums.SettingEnum;
 import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.MessageUtils;
 import com.ruoyi.common.utils.OrderUtils;
+import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.ucontract.ContractComputerUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -141,10 +142,35 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
      */
     @Override
     public String buyContractOrder(String symbol, BigDecimal leverage, BigDecimal delegatePrice, BigDecimal delegateTotal, Long userId, Integer type, Integer delegateType) {
+        if (Objects.isNull(userId)) {
+            return MessageUtils.message("user.notfound");
+        }
+        if (StringUtils.isEmpty(symbol)) {
+            return "Trading pair is not ready";
+        }
+        symbol = symbol.toLowerCase();
+        if (Objects.isNull(type) || (type != 0 && type != 1)) {
+            return "Order side is required";
+        }
+        if (Objects.isNull(delegateType) || (delegateType != 0 && delegateType != 1)) {
+            return "Order type is required";
+        }
+        if (Objects.isNull(leverage) || leverage.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Leverage is not ready";
+        }
+        if (Objects.isNull(delegateTotal) || delegateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Order quantity is required";
+        }
+        if (delegateType == 0 && (Objects.isNull(delegatePrice) || delegatePrice.compareTo(BigDecimal.ZERO) <= 0)) {
+            return "Order price is required";
+        }
         if(delegateType==1){
             log.info("前端传入实时价格"+delegatePrice);
             delegatePrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + symbol);
             log.info("获取实时价格"+delegatePrice);
+        }
+        if (Objects.isNull(delegatePrice) || delegatePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Price is not ready";
         }
        //校验
         String result=verifySubmit(symbol, leverage, delegatePrice, delegateTotal, userId.longValue());
@@ -154,6 +180,9 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
         String serialId = "U" + OrderUtils.generateOrderNum();
         TContractCoin tContractCoin = contractCoinService.selectContractCoinBySymbol(symbol);
         TAppUser user = appUserService.selectTAppUserByUserId(userId);
+        if (Objects.isNull(user)) {
+            return MessageUtils.message("user.notfound");
+        }
         TAppAsset tAppAsset = appAssetService.getAssetByUserIdAndType(userId, AssetEnum.CONTRACT_ASSETS.getCode());
         BigDecimal beforeMount = tAppAsset.getAvailableAmount();
         BigDecimal shareNumber = tContractCoin.getShareNumber();
@@ -163,6 +192,9 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
 
         BigDecimal closePrice = ContractComputerUtil.getStrongPrice(leverage, type, delegatePrice, num, amount,openFee);
         BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + symbol);
+        if (Objects.isNull(currentlyPrice) || currentlyPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Price is not ready";
+        }
          //市价
         if (delegateType == 1) {
             //扣除金额
@@ -199,11 +231,29 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
      */
     @Override
     public String verifySubmit(String symbol, BigDecimal leverage, BigDecimal delegatePrice, BigDecimal delegateTotal, Long userId) {
+        if (StringUtils.isEmpty(symbol)) {
+            return "Trading pair is not ready";
+        }
+        if (Objects.isNull(leverage) || leverage.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Leverage is not ready";
+        }
+        if (Objects.isNull(delegatePrice) || delegatePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Price is not ready";
+        }
+        if (Objects.isNull(delegateTotal) || delegateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Order quantity is required";
+        }
 
         TContractCoin tContractCoin = contractCoinService.selectContractCoinBySymbol(symbol);
+        if (Objects.isNull(tContractCoin)) {
+            return "Contract pair is not ready";
+        }
         BigDecimal shareNumber = tContractCoin.getShareNumber();
         BigDecimal minShare = tContractCoin.getMinShare();
         BigDecimal maxShare = tContractCoin.getMaxShare();
+        if (Objects.isNull(shareNumber) || shareNumber.compareTo(BigDecimal.ZERO) <= 0) {
+            return "Contract face value is not ready";
+        }
         BigDecimal num = shareNumber.multiply(delegateTotal);
         //合约账户
         TAppAsset tAppAsset = appAssetService.getAssetByUserIdAndType(userId, AssetEnum.CONTRACT_ASSETS.getCode());
@@ -216,10 +266,10 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
         if (amount.compareTo(availableAmount) > 0) {
             return MessageUtils.message("contract.accont.error");
         }
-        if (delegateTotal.compareTo(minShare) < 0) {
+        if (Objects.nonNull(minShare) && delegateTotal.compareTo(minShare) < 0) {
             return MessageUtils.message("contract.min.share",minShare);
         }
-        if (delegateTotal.compareTo(maxShare) > 0) {
+        if (Objects.nonNull(maxShare) && delegateTotal.compareTo(maxShare) > 0) {
             return MessageUtils.message("contract.max.share",maxShare);
         }
         return "success";

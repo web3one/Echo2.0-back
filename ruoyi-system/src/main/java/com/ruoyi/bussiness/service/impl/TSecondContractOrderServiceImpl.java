@@ -10,7 +10,6 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -24,12 +23,14 @@ import com.ruoyi.bussiness.mapper.TSecondContractOrderMapper;
 import com.ruoyi.bussiness.service.*;
 import com.ruoyi.common.core.redis.RedisCache;
 import com.ruoyi.common.enums.CachePrefix;
+import com.ruoyi.common.enums.AssetEnum;
 import com.ruoyi.common.enums.CommonEnum;
 import com.ruoyi.common.enums.RecordEnum;
 import com.ruoyi.common.enums.SettingEnum;
 import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.MessageUtils;
 import com.ruoyi.common.utils.OrderUtils;
+import com.ruoyi.common.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -149,22 +150,35 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
     @Override
     public String createSecondContractOrder(TSecondContractOrder order) {
         log.info("下单"+ JSONObject.toJSONString(order));
+        String validateResult = validateSecondContractOrder(order);
+        if (!"success".equals(validateResult)) {
+            return validateResult;
+        }
         try{
             String serialId = "R" + OrderUtils.generateOrderNum();
             long loginIdAsLong = StpUtil.getLoginIdAsLong();
             BigDecimal amount = order.getBetAmount();
             TAppUser user = appUserMapper.selectTAppUserByUserId(loginIdAsLong);
+            if (Objects.isNull(user)) {
+                return MessageUtils.message("user.notfound");
+            }
             TSecondPeriodConfig secondPeriodConfig = itSecondPeriodConfigService.getById(order.getPeriodId());
+            if (Objects.isNull(secondPeriodConfig)) {
+                return "No contract period available";
+            }
             //判断金额上下限
-            if(secondPeriodConfig.getMaxAmount().compareTo(amount)<0 || secondPeriodConfig.getMinAmount().compareTo(amount) > 0){
+            if((Objects.nonNull(secondPeriodConfig.getMaxAmount()) && secondPeriodConfig.getMaxAmount().compareTo(amount)<0)
+                    || (Objects.nonNull(secondPeriodConfig.getMinAmount()) && secondPeriodConfig.getMinAmount().compareTo(amount) > 0)){
                 return MessageUtils.message("order_amount_limit");
             }
             //1. 时间判断， 不能太频繁
 
-            // 平台资产
-            Map<String, TAppAsset> assetMap=assetService.getAssetByUserIdList(user.getUserId());
-            TAppAsset asset=assetMap.get(order.getBaseSymbol().toLowerCase()+user.getUserId());
-            if ( asset.getAvailableAmount().compareTo(amount) < 0) {
+            // 秒合约使用合约资产，与U本位共用合约账户
+            TAppAsset asset = assetService.getOne(new LambdaQueryWrapper<TAppAsset>()
+                    .eq(TAppAsset::getUserId, user.getUserId())
+                    .eq(TAppAsset::getSymbol, order.getBaseSymbol().toLowerCase())
+                    .eq(TAppAsset::getType, AssetEnum.CONTRACT_ASSETS.getCode()));
+            if (Objects.isNull(asset) || asset.getAvailableAmount().compareTo(amount) < 0) {
                 return MessageUtils.message("order_amount_error");
             }
             //根据ID 查看时间 周期
@@ -187,6 +201,9 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
             TSecondCoinConfig one = tSecondCoinConfigMapper.selectOne(new LambdaQueryWrapper<TSecondCoinConfig>().eq(TSecondCoinConfig::getCoin, order.getCoinSymbol().toUpperCase()));
             if(one != null && 2!=one.getType()){
                 price=redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + order.getCoinSymbol().toUpperCase());
+            }
+            if (Objects.isNull(price) || price.compareTo(BigDecimal.ZERO) <= 0) {
+                return "Price is not ready";
             }
             order.setOpenPrice(price);
             order.setSign(0);
@@ -223,8 +240,24 @@ public class TSecondContractOrderServiceImpl extends ServiceImpl<TSecondContract
                 return MessageUtils.message("withdraw.refresh");
             }
         }catch (Exception e){
-            log.info(JSONObject.toJSONString(e));
+            log.error("create second contract order failed", e);
         }
         return  MessageUtils.message("withdraw.refresh");
+    }
+
+    private String validateSecondContractOrder(TSecondContractOrder order) {
+        if (Objects.isNull(order)) {
+            return "Order data is required";
+        }
+        if (StringUtils.isEmpty(order.getCoinSymbol()) || StringUtils.isEmpty(order.getBaseSymbol()) || StringUtils.isEmpty(order.getSymbol())) {
+            return "Trading pair is not ready";
+        }
+        if (Objects.isNull(order.getPeriodId())) {
+            return "No contract period available";
+        }
+        if (Objects.isNull(order.getBetAmount()) || order.getBetAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            return "Order amount is required";
+        }
+        return "success";
     }
 }

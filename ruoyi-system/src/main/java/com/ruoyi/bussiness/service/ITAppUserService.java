@@ -88,7 +88,7 @@ public interface ITAppUserService extends IService<TAppUser>
 
     List<TAppUser> selectUnboundAppUser(TAppUser tAppUser);
 
-    void sendEmailCode(String type, String email);
+    String sendEmailCode(String type, String email);
 
     String bindEmail(String email, String emailCode, HttpServletRequest request);
 
