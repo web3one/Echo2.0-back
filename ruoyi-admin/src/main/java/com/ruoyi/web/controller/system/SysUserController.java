@@ -319,7 +319,7 @@ public class SysUserController extends BaseController
     }
 
     @Log(title = "查询所有的代理用户", businessType = BusinessType.UPDATE)
-    @PreAuthorize("@ss.hasPermi('system:user:selectAllAgentUser')")
+    @PreAuthorize("@ss.hasAnyPermi('system:user:selectAllAgentUser,bussiness:user:add,bussiness:user:updateUserAppIds')")
     @GetMapping("/selectAllAgentUser")
     public TableDataInfo selectAllAgentUser(SysUser user)
     {
