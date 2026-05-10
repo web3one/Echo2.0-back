@@ -135,14 +135,31 @@ public class EmailUtils {
             throw new IllegalStateException("EMAIL_SETTING is empty");
         }
         EmailSetting emailSetting = JSONUtil.toBean(setting.getSettingValue(), EmailSetting.class);
-        String appName = emailSetting.getMailAppName();
-        String host = emailSetting.getMailHost();
-        String port = emailSetting.getMailPort();
-        String username = emailSetting.getMailUsername();
-        String password = emailSetting.getMailPassword();
+        String appName = trimToEmpty(emailSetting.getMailAppName());
+        String host = trimToEmpty(emailSetting.getMailHost());
+        String port = trimToEmpty(emailSetting.getMailPort());
+        String username = trimToEmpty(emailSetting.getMailUsername());
+        String password = trimToEmpty(emailSetting.getMailPassword());
         String from = StringUtils.isNotBlank(emailSetting.getMailFrom()) ? emailSetting.getMailFrom().trim() : username;
-        String templateCode = emailSetting.getMailTemplate();
-        int portNumber = Integer.parseInt(port);
+        String templateCode = trimToEmpty(emailSetting.getMailTemplate());
+        String missing = missingSmtpConfig(host, port, username, password, templateCode);
+        if (StringUtils.isNotBlank(missing)) {
+            if (isLocalEmailFallbackEnabled()) {
+                cacheLocalEmailCode(redisCache, email, type, randomCode, "EMAIL_SETTING missing " + missing);
+                return randomCode;
+            }
+            throw new IllegalStateException("EMAIL_SETTING missing " + missing);
+        }
+        int portNumber;
+        try {
+            portNumber = Integer.parseInt(port);
+        } catch (NumberFormatException e) {
+            if (isLocalEmailFallbackEnabled()) {
+                cacheLocalEmailCode(redisCache, email, type, randomCode, "EMAIL_SETTING invalid mailPort=" + port);
+                return randomCode;
+            }
+            throw new IllegalStateException("EMAIL_SETTING invalid mailPort=" + port, e);
+        }
 
         Properties properties = new Properties();
         properties.setProperty("mail.smtp.host", host);
@@ -231,6 +248,29 @@ public class EmailUtils {
             return Boolean.TRUE.equals(enabled) || environment.acceptsProfiles(Profiles.of("dev", "local"));
         } catch (Exception ignored) {
             return false;
+        }
+    }
+
+    private static String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static String missingSmtpConfig(String host, String port, String username, String password, String templateCode) {
+        StringBuilder missing = new StringBuilder();
+        appendMissing(missing, host, "mailHost");
+        appendMissing(missing, port, "mailPort");
+        appendMissing(missing, username, "mailUsername");
+        appendMissing(missing, password, "mailPassword");
+        appendMissing(missing, templateCode, "mailTemplate");
+        return missing.toString();
+    }
+
+    private static void appendMissing(StringBuilder missing, String value, String name) {
+        if (StringUtils.isBlank(value)) {
+            if (missing.length() > 0) {
+                missing.append(",");
+            }
+            missing.append(name);
         }
     }
 
