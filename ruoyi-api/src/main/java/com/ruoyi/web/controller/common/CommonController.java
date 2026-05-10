@@ -115,35 +115,35 @@ public class CommonController
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(s.getCoin());
+            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(s.getCoin()));
             s.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
             if(s.getMarket().equals("metal")){
-                BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin());
+                BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin()));
                 s.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
             }else{
-                BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin().toLowerCase());
+                BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + s.getCoin().toLowerCase()));
                 s.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
             }
         }
         List<TCurrencySymbol> currencyList = tCurrencySymbolService.getSymbolList();
         for (TCurrencySymbol t:currencyList) {
-            BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + t.getCoin().toLowerCase());
+            BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + t.getCoin().toLowerCase()));
             t.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
             BigDecimal bigDecimal = stringBigDecimalHashMap.get(t.getSymbol().toLowerCase());
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(t.getCoin().toLowerCase());
+            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(t.getCoin().toLowerCase()));
             t.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
         }
         List<TContractCoin> contractList = tContractCoinService.getCoinList();
         for (TContractCoin coin:contractList) {
-            BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coin.getCoin().toLowerCase());
+            BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + coin.getCoin().toLowerCase()));
             BigDecimal bigDecimal = stringBigDecimalHashMap.get(coin.getSymbol().toLowerCase());
             if(bigDecimal==null){
                 bigDecimal=BigDecimal.ZERO;
             }
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(coin.getCoin().toLowerCase());
+            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(coin.getCoin().toLowerCase()));
             coin.setOpen(Objects.isNull(openPrice)?BigDecimal.ZERO:openPrice.add(bigDecimal));
             coin.setAmount(Objects.isNull(currentlyPrice)?BigDecimal.ZERO:currentlyPrice);
         }
@@ -151,9 +151,9 @@ public class CommonController
         List<TTradfiSymbol> tradfiList = tTradfiSymbolService.selectH5SymbolList();
         for (TTradfiSymbol t : tradfiList) {
             String key = t.getSymbol().toLowerCase();
-            BigDecimal currentlyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + key);
+            BigDecimal currentlyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + key));
             t.setAmount(Objects.isNull(currentlyPrice) ? BigDecimal.ZERO : currentlyPrice);
-            BigDecimal openPrice = KLoader.OPEN_PRICE.get(key);
+            BigDecimal openPrice = toBigDecimal(KLoader.OPEN_PRICE.get(key));
             t.setOpen(Objects.isNull(openPrice) ? BigDecimal.ZERO : openPrice);
         }
 
@@ -163,6 +163,24 @@ public class CommonController
         map.put("contractList",contractList);
         map.put("tradfiList", tradfiList);
         return AjaxResult.success(map);
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            log.warn("Cannot convert value to BigDecimal: {}", value);
+            return BigDecimal.ZERO;
+        }
     }
 
     @ApiOperation(value = "获取客服列表")
