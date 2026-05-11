@@ -75,8 +75,9 @@ public class EmailUtils {
     /**
      * 发送邮箱验证码。type 为 {@link UserCodeTypeEnum} 名。
      * 调用 apihz mailyzm1，并在 Redis 写入 type 上下文，校验时核对 type 防跨场景。
+     * 返回值：apihz 远程生成验证码，本地无法获取，恒返回 null（接口签名 String 仅为兼容上层 debug 回显逻辑）。
      */
-    public static void formMail(String email, String type) {
+    public static String formMail(String email, String type) {
         UserCodeTypeEnum codeType;
         try {
             codeType = UserCodeTypeEnum.valueOf(type);
@@ -118,6 +119,7 @@ public class EmailUtils {
 
         RedisCache redisCache = SpringContextUtil.getBean(RedisCache.class);
         redisCache.setCacheObject(ctxKey(mail), codeType.name(), CODE_TTL_SECONDS, TimeUnit.SECONDS);
+        return null;
     }
 
     /**

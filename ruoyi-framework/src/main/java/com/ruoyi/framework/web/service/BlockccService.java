@@ -53,6 +53,7 @@ public class BlockccService {
         String market = StringUtils.isBlank(klineParam.getMarket()) ? "" : klineParam.getMarket();
         String timeCode = this.getMt5Time(klineParam.getInterval());
         String symbol = klineParam.getSymbol();
+        String baseSymbol = normalizeBaseSymbol(symbol);
         switch (market) {
             case "gate": {
                 // Gate 现货 REST 历史 K 线：公开免鉴权
@@ -73,14 +74,13 @@ public class BlockccService {
                         .timeout(15000)
                         .execute().body();
                 List<Kline> his = parseGateSpotCandles(body);
-                his = botKlineModelInfoService.selectBotLineList(symbol.toLowerCase() + "usdt", his, klineParam.getInterval());
-                return his;
+                return applyBotLineList(baseSymbol, his, klineParam.getInterval());
             }
             case "binance": {
                 //后续加上控线逻辑
                 Map<String, Object> parameters = new LinkedHashMap<>();
                 SpotClient client = new SpotClientImpl();
-                parameters.put("symbol", symbol.toUpperCase() + "USDT");
+                parameters.put("symbol", toUsdtPairNoSep(symbol));
                 Interval interval = Interval.valueOf(klineParam.getInterval());
                 parameters.put("interval", interval.toString());
                 if (klineParam.getEnd() != null) {
@@ -102,14 +102,14 @@ public class BlockccService {
                     kline.setVolume(Double.parseDouble((String) array[5]));
                     his.add(kline);
                 }
-                his = botKlineModelInfoService.selectBotLineList(symbol.toLowerCase() + "usdt", his, klineParam.getInterval());
+                his = applyBotLineList(baseSymbol, his, klineParam.getInterval());
 
                 return his;
             }
             case "huobi": {
                 MarketAPIServiceImpl huobiAPIService = new MarketAPIServiceImpl();
                 SwapMarketHistoryKlineRequest result = SwapMarketHistoryKlineRequest.builder()
-                        .contractCode(symbol.toUpperCase() + "-USDT")//合约代码	"BTC-USDT" ...
+                        .contractCode((baseSymbol == null ? symbol.toUpperCase() : baseSymbol) + "-USDT")//合约代码	"BTC-USDT" ...
                         .period(CandlestickIntervalEnum.getValue(klineParam.getInterval())) //K线类型	1min, 5min, 15min, 30min, 60min,4hour,1day,1week,1mon
                         .size(1000) //获取数量，默认150	[1,2000]
                         //.from() //开始时间戳 10位 单位S
@@ -130,7 +130,7 @@ public class BlockccService {
                         his.add(kline);
                     }
                 }
-                his = botKlineModelInfoService.selectBotLineList(symbol.toLowerCase() + "usdt", his, klineParam.getInterval());
+                his = applyBotLineList(baseSymbol, his, klineParam.getInterval());
                 return his;
             }
             case "echo": {
@@ -164,7 +164,7 @@ public class BlockccService {
                     his.add(kline);
                 }
                 his = itOwnCoinService.selectLineList(one, his);
-                his = botKlineModelInfoService.selectBotLineList(symbol.toLowerCase() + "usdt", his, klineParam.getInterval());
+                his = applyBotLineList(baseSymbol, his, klineParam.getInterval());
                 return his;
             }
             case "energy": {
@@ -364,16 +364,67 @@ public class BlockccService {
         }
     }
 
-    /** 内部 symbol（"btc" / "BTC"，不带 usdt 后缀） → Gate 现货 pair（"BTC_USDT"） */
+    /** 兼容 "btc"、"BTC/USDT"、"BTC_USDT"、"BTCUSDT"，统一取基础币种。 */
+    private static String normalizeBaseSymbol(String symbol) {
+        if (symbol == null || symbol.trim().isEmpty()) return null;
+        String value = symbol.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace('/', '_');
+        if (value.endsWith("_USDT")) {
+            value = value.substring(0, value.length() - 5);
+        } else if (value.endsWith("USDT") && value.length() > 4) {
+            value = value.substring(0, value.length() - 4);
+        }
+        value = value.replace("_", "");
+        return value.isEmpty() ? null : value;
+    }
+
+    private List<Kline> applyBotLineList(String baseSymbol, List<Kline> his, String interval) {
+        if (his == null) return new ArrayList<>();
+        if (baseSymbol == null) return his;
+        try {
+            List<Kline> adjusted = botKlineModelInfoService.selectBotLineList(baseSymbol.toLowerCase() + "usdt", his, interval);
+            return adjusted == null ? his : adjusted;
+        } catch (Exception e) {
+            log.warn("[Kline] 控线叠加失败，使用原始K线 (symbol={}, interval={}): {}", baseSymbol, interval, e.toString());
+            return his;
+        }
+    }
+
+    /** 内部 symbol → 无分隔 USDT 交易对（"BTCUSDT"） */
+    private static String toUsdtPairNoSep(String symbol) {
+        String base = normalizeBaseSymbol(symbol);
+        return (base == null ? symbol.toUpperCase(Locale.ROOT) : base) + "USDT";
+    }
+
+    /** 内部 symbol → Gate 现货 pair（"BTC_USDT"） */
     private static String toGatePair(String symbol) {
-        if (symbol == null || symbol.isEmpty()) return null;
-        return symbol.toUpperCase() + "_USDT";
+        String base = normalizeBaseSymbol(symbol);
+        if (base == null) return null;
+        return base + "_USDT";
     }
 
     /** 项目内 Interval 枚举名 → Gate REST interval 字符串。Gate 不支持的周期返回 null。 */
     private static String toGateInterval(String interval) {
-        if (interval == null) return null;
+        if (interval == null || interval.trim().isEmpty()) return "1m";
         switch (interval) {
+            case "1":
+            case "1m":          return "1m";
+            case "5":
+            case "5m":          return "5m";
+            case "15":
+            case "15m":         return "15m";
+            case "30":
+            case "30m":         return "30m";
+            case "60":
+            case "1h":          return "1h";
+            case "120":
+            case "2h":          return "2h";
+            case "360":
+            case "6h":          return "8h";
+            case "1d":          return "1d";
+            case "W":
+            case "1w":          return "7d";
+            case "M":
+            case "1M":          return "30d";
             case "ONE_MIN":     return "1m";
             case "FIVE_MIN":    return "5m";
             case "FIFTEEN_MIN": return "15m";
@@ -385,6 +436,8 @@ public class BlockccService {
             case "ONE_DAY":
             case "TWO_DAY":     return "1d";
             case "SEVEN_DAY":   return "7d";
+            case "ONE_WEEK":    return "7d";
+            case "ONE_MON":     return "30d";
             default:            return null;
         }
     }
@@ -396,10 +449,15 @@ public class BlockccService {
     private static List<Kline> parseGateSpotCandles(String body) {
         List<Kline> his = new ArrayList<>();
         if (body == null || body.isEmpty() || body.charAt(0) != '[') return his;
-        JSONArray rows = JSONArray.parse(body);
+        com.alibaba.fastjson.JSONArray rows = JSON.parseArray(body);
+        int skipped = 0;
+        String firstError = null;
         for (int i = 0; i < rows.size(); i++) {
-            JSONArray r = rows.getJSONArray(i);
-            if (r == null || r.size() < 6) continue;
+            com.alibaba.fastjson.JSONArray r = rows.getJSONArray(i);
+            if (r == null || r.size() < 6) {
+                skipped++;
+                continue;
+            }
             try {
                 Kline kline = new Kline();
                 kline.setTimestamp(Long.parseLong(String.valueOf(r.get(0))) * 1000L);
@@ -410,9 +468,17 @@ public class BlockccService {
                 double vol = r.size() >= 7 ? Double.parseDouble(String.valueOf(r.get(6))) : 0d;
                 kline.setVolume(vol);
                 his.add(kline);
-            } catch (Exception ignore) {
+            } catch (Exception e) {
+                skipped++;
+                if (firstError == null) {
+                    firstError = e.toString();
+                }
                 // 单根异常不影响整体
             }
+        }
+        if (his.isEmpty() && rows != null && !rows.isEmpty()) {
+            log.warn("[Gate] K线解析为空 rows={}, skipped={}, firstError={}, bodyHead={}",
+                    rows.size(), skipped, firstError, body.substring(0, Math.min(120, body.length())));
         }
         return his;
     }
@@ -466,10 +532,10 @@ public class BlockccService {
 
     public Ticker24hVO getHistoryKline24hrTicker(KlineParamVO klineParamVO) {
         String market = klineParamVO.getMarket();
-        if("metal|mt5|energy".contains(market)){
+        if("metal".equals(market) || "mt5".equals(market) || "energy".equals(market)){
             Ticker24hVO ticker24hVO = new Ticker24hVO();
             ticker24hVO.setSymbol(klineParamVO.getSymbol());
-            BigDecimal cacheObject = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + klineParamVO.getSymbol());
+            BigDecimal cacheObject = safeBd(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + klineParamVO.getSymbol()));
             ticker24hVO.setHighPrice(cacheObject);
             ticker24hVO.setLowPrice(cacheObject);
             Random random = new Random();
@@ -488,7 +554,8 @@ public class BlockccService {
                         .execute().body();
                 JSONArray arr = JSONArray.parse(body);
                 Ticker24hVO vo = new Ticker24hVO();
-                vo.setSymbol(klineParamVO.getSymbol().toUpperCase() + "USDT");
+                String base = normalizeBaseSymbol(klineParamVO.getSymbol());
+                vo.setSymbol((base == null ? klineParamVO.getSymbol().toUpperCase(Locale.ROOT) : base) + "USDT");
                 if (arr != null && !arr.isEmpty()) {
                     com.alibaba.fastjson2.JSONObject t = arr.getJSONObject(0);
                     vo.setHighPrice(safeBd(t.getString("high_24h")));
@@ -503,7 +570,7 @@ public class BlockccService {
         }
         Map<String, Object> parameters = new LinkedHashMap<>();
         SpotClient client = new SpotClientImpl();
-        parameters.put("symbol", klineParamVO.getSymbol().toUpperCase() + "USDT");
+        parameters.put("symbol", toUsdtPairNoSep(klineParamVO.getSymbol()));
         if("echo".equals(market)){
             KlineSymbol one = klineSymbolService.getOne(new LambdaQueryWrapper<KlineSymbol>().eq(KlineSymbol::getSymbol, klineParamVO.getSymbol().toLowerCase()));
             if(null == one){
@@ -525,6 +592,12 @@ public class BlockccService {
         try { return new BigDecimal(s); } catch (Exception e) { return null; }
     }
 
+    private static BigDecimal safeBd(Object value) {
+        if (value == null) return null;
+        if (value instanceof BigDecimal) return (BigDecimal) value;
+        try { return new BigDecimal(String.valueOf(value)); } catch (Exception e) { return null; }
+    }
+
     public Ticker24hVO getHistoryKline24hrTicker2(KlineParamVO klineParamVO) {
         //遍历传来的market参数数组
         Object marketValue = klineParamVO.getMarkets();
@@ -543,7 +616,7 @@ public class BlockccService {
                     Ticker24hVO ticker24hVO = new Ticker24hVO();
 
                     ticker24hVO.setSymbol(symbol);
-                    BigDecimal cacheObject = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + symbol);
+                    BigDecimal cacheObject = safeBd(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + symbol));
                     ticker24hVO.setHighPrice(cacheObject);
                     ticker24hVO.setLowPrice(cacheObject);
                     Random random = new Random();
@@ -551,7 +624,7 @@ public class BlockccService {
                     ticker24hVO.setVolume(new BigDecimal(randomValue));
                     return ticker24hVO;
                 }
-                parameters.put("symbol", symbol.toUpperCase() + "USDT");
+                parameters.put("symbol", toUsdtPairNoSep(symbol));
                 if (market.equals("echo")) {
                     KlineSymbol one = klineSymbolService.getOne(new LambdaQueryWrapper<KlineSymbol>().eq(KlineSymbol::getSymbol, symbol.toLowerCase()));
                     if (null == one) {
@@ -571,17 +644,28 @@ public class BlockccService {
             return historyKline == null ? new ArrayList<>() : historyKline;
         }
         TBotKlineModel tBotKlineModel = new TBotKlineModel();
-        tBotKlineModel.setSymbol(klineParamVO.getSymbol()+"usdt");
+        String baseSymbol = normalizeBaseSymbol(klineParamVO.getSymbol());
+        tBotKlineModel.setSymbol((baseSymbol == null ? klineParamVO.getSymbol() : baseSymbol.toLowerCase()) + "usdt");
         tBotKlineModel.setModel(0L);
         List<TBotKlineModel> tBotKlineModels = botKlineModelService.selectTBotKlineModelList(tBotKlineModel);
+        if (tBotKlineModels == null || tBotKlineModels.isEmpty()) {
+            return historyKline;
+        }
         BigDecimal cc = new BigDecimal(0);
         int num = 0;
         for (TBotKlineModel tBotKlineModel1: tBotKlineModels ) {
+            if (tBotKlineModel1 == null || tBotKlineModel1.getConPrice() == null || tBotKlineModel1.getBeginTime() == null) {
+                continue;
+            }
             cc=cc.add( tBotKlineModel1.getConPrice());
             boolean isF = true;
             int a = 0;
             long time = tBotKlineModel1.getBeginTime().getTime();
             for (Kline kline: historyKline) {
+                if (kline == null || kline.getTimestamp() == null || kline.getOpen() == null
+                        || kline.getHigh() == null || kline.getLow() == null || kline.getClose() == null) {
+                    continue;
+                }
 
                     if(kline.getTimestamp()>=time){
                         if(isF){
@@ -610,7 +694,7 @@ public class BlockccService {
 
                 a++;
                 if(a==historyKline.size()){
-                    BigDecimal cacheObject = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + klineParamVO.getSymbol().replace("usdt", "").toLowerCase());
+                    BigDecimal cacheObject = safeBd(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + (baseSymbol == null ? klineParamVO.getSymbol().replace("usdt", "").toLowerCase() : baseSymbol.toLowerCase())));
                     if (cacheObject != null) {
                         kline.setClose(cacheObject.doubleValue());
                     }

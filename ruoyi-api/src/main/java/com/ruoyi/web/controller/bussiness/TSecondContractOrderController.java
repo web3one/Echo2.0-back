@@ -57,7 +57,9 @@ public class TSecondContractOrderController extends ApiBaseController
     @PostMapping("/selectOrderList")
     public AjaxResult selectOrderList(@RequestBody TSecondContractOrder tSecondContractOrder)
     {
-        tSecondContractOrder.setUserId(getStpUserId());
+        Long userId = getStpUserId();
+        tSecondContractOrderService.settleExpiredOrders(userId);
+        tSecondContractOrder.setUserId(userId);
         List<TSecondContractOrder> list = tSecondContractOrderService.selectTSecondContractOrderList(tSecondContractOrder);
         if(!CollectionUtils.isEmpty(list)){
             list.forEach(t->{

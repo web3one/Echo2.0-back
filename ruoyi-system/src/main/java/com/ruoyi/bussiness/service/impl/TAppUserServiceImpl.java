@@ -29,6 +29,7 @@ import com.ruoyi.system.service.ISysUserService;
 import com.ruoyi.util.EmailUtils;
 import com.ruoyi.common.utils.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +48,9 @@ import javax.servlet.http.HttpServletRequest;
 @Service
 @Slf4j
 public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> implements ITAppUserService {
+    private static final long USER_ID_SEQUENCE_START = 198_543_732L;
+    private static final int USER_ID_GENERATE_MAX_RETRY = 100;
+
     @Resource
     private TAppUserMapper tAppUserMapper;
     @Resource
@@ -171,7 +175,7 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
         newUser.setUpdateTime(DateUtils.getNowDate());
 
 
-        int i = tAppUserMapper.insertTAppUser(newUser);
+        int i = insertTAppUserWithSequentialUserId(newUser);
         // 闭包表：新用户写入自身关系（depth=0）+ 复制邀请人完整祖先链（depth+1，无限级）
         // 金矿邀请体系 Phase 0.3：替代 app_parent_ids 的 3 级限制
         userRelationMapper.insertSelf(newUser.getUserId());
@@ -364,8 +368,8 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
     }
 
     @Override
-    public void sendEmailCode(String type, String email) {
-        EmailUtils.formMail(email, type);
+    public String sendEmailCode(String type, String email) {
+        return EmailUtils.formMail(email, type);
     }
 
     @Override
@@ -465,11 +469,11 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
                 }
                 BigDecimal availableAmount = asset.getAvailableAmount();
                 if (!"usdt".equals(asset.getSymbol())) {
-                    BigDecimal currencyPrice = redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + asset.getSymbol());
-                    if (StringUtils.isNull(currencyPrice)) {
+                    BigDecimal currencyPrice = toBigDecimal(redisCache.getCacheObject(CachePrefix.CURRENCY_PRICE.getPrefix() + asset.getSymbol()));
+                    if (currencyPrice.compareTo(BigDecimal.ZERO) == 0) {
                         currencyPrice = BigDecimal.ONE;
                     }
-                    asset.setExchageAmount(availableAmount.multiply(currencyPrice));
+                    asset.setExchageAmount((availableAmount == null ? BigDecimal.ZERO : availableAmount).multiply(currencyPrice));
                 } else {
                     asset.setExchageAmount(asset.getAvailableAmount());
                 }
@@ -643,7 +647,24 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
     }
 
     @Override
+    @Transactional
     public int addTAppUser(TAppUser tAppUser) {
+        String loginName = tAppUser.getLoginName();
+        if (StringUtils.isBlank(loginName)) {
+            throw new ServiceException(MessageUtils.message("user.register.email.format"));
+        }
+        loginName = loginName.trim().toLowerCase(Locale.ROOT);
+        if (!EmailUtils.checkEmail(loginName)) {
+            throw new ServiceException(MessageUtils.message("user.register.email.format"));
+        }
+        if (tAppUserMapper.selectByUserLoginName(loginName) != null) {
+            throw new ServiceException(MessageUtils.message("user.user_name_exisit"));
+        }
+        if (checkEmailUnique(loginName) > 0) {
+            throw new ServiceException(MessageUtils.message("user.register.email.exisit"));
+        }
+        tAppUser.setLoginName(loginName);
+        tAppUser.setEmail(loginName);
         if (StringUtils.isNotBlank(tAppUser.getAdminParentIds())) {
             SysUser sysUser = sysUserService.selectUserById(Long.parseLong(tAppUser.getAdminParentIds()));
             if (sysUser != null) {
@@ -676,7 +697,7 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
         tAppUser.setCreateBy(SecurityUtils.getUsername());
         tAppUser.setCreateTime(DateUtils.getNowDate());
         tAppUser.setUpdateTime(DateUtils.getNowDate());
-        int i = tAppUserMapper.insertTAppUser(tAppUser);
+        int i = insertTAppUserWithSequentialUserId(tAppUser);
         //添加玩家详情表
         TAppUserDetail tAppUserDetail = new TAppUserDetail();
         tAppUserDetail.setUserId(tAppUser.getUserId());
@@ -725,6 +746,47 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
         tAppAsset.setType(AssetEnum.CONTRACT_ASSETS.getCode());
         tAppAssetMapper.insertTAppAsset(tAppAsset);
         return i;
+    }
+
+    private int insertTAppUserWithSequentialUserId(TAppUser appUser) {
+        for (int i = 0; i < USER_ID_GENERATE_MAX_RETRY; i++) {
+            appUser.setUserId(generateNextUserId());
+            try {
+                return tAppUserMapper.insertTAppUser(appUser);
+            } catch (DuplicateKeyException e) {
+                if (!isUserIdDuplicate(e) || i == USER_ID_GENERATE_MAX_RETRY - 1) {
+                    throw e;
+                }
+                log.warn("顺序用户ID已存在，准备领取下一个。userId={}", appUser.getUserId());
+            }
+        }
+        throw new ServiceException("用户ID生成失败，请重试");
+    }
+
+    private Long generateNextUserId() {
+        for (int i = 0; i < USER_ID_GENERATE_MAX_RETRY; i++) {
+            long userId = reserveNextUserId();
+            if (tAppUserMapper.selectTAppUserByUserId(userId) == null) {
+                return userId;
+            }
+            log.warn("顺序用户ID已被占用，继续递增。userId={}", userId);
+        }
+        throw new ServiceException("用户ID生成失败，请重试");
+    }
+
+    private Long reserveNextUserId() {
+        tAppUserMapper.initUserIdSequence(USER_ID_SEQUENCE_START);
+        Long userId = tAppUserMapper.selectNextUserIdForUpdate();
+        if (userId == null || userId < USER_ID_SEQUENCE_START) {
+            userId = USER_ID_SEQUENCE_START;
+        }
+        tAppUserMapper.updateNextUserId(userId + 1);
+        return userId;
+    }
+
+    private boolean isUserIdDuplicate(DuplicateKeyException e) {
+        String message = e.getMessage();
+        return message != null && (message.contains("PRIMARY") || message.contains("user_id"));
     }
 
     @Override
@@ -796,5 +858,22 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
             }
         }
         return list;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
     }
 }

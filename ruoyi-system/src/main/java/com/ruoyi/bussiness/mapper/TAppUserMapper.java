@@ -3,7 +3,10 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import java.util.List;
 
 import com.ruoyi.bussiness.domain.TAppUser;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 /**
  * 玩家用户Mapper接口
@@ -79,4 +82,13 @@ public interface TAppUserMapper extends BaseMapper<TAppUser>
     int updateTotleAmont(TAppUser appUser);
 
     int updateRechargeAmont(TAppUser user);
+
+    @Insert("INSERT IGNORE INTO t_app_user_id_sequence (id, next_user_id, create_time, update_time) VALUES (1, #{nextUserId}, NOW(), NOW())")
+    int initUserIdSequence(@Param("nextUserId") Long nextUserId);
+
+    @Select("SELECT next_user_id FROM t_app_user_id_sequence WHERE id = 1 FOR UPDATE")
+    Long selectNextUserIdForUpdate();
+
+    @Update("UPDATE t_app_user_id_sequence SET next_user_id = #{nextUserId}, update_time = NOW() WHERE id = 1")
+    int updateNextUserId(@Param("nextUserId") Long nextUserId);
 }

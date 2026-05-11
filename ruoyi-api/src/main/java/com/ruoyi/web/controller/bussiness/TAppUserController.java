@@ -37,6 +37,7 @@ import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
+import org.springframework.core.env.Environment;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 import com.ruoyi.common.core.domain.AjaxResult;
@@ -61,6 +62,8 @@ public class TAppUserController extends ApiBaseController {
     private SmsService smsService;
     @Resource
     private RedisCache redisCache;
+    @Resource
+    private Environment environment;
     @Resource
     private ITAppuserLoginLogService appUserLoginLogService;
     @Resource
@@ -170,6 +173,7 @@ public class TAppUserController extends ApiBaseController {
                 return AjaxResult.error(MessageUtils.message("login.code_error"));
             }
             if (!EmailUtils.verifyCode(email, UserCodeTypeEnum.REGISTER, code)) {
+                log.debug("register via email error");
                 return AjaxResult.error(MessageUtils.message("login.code_error"));
             }
             user.setLoginName(email);
@@ -214,10 +218,13 @@ public class TAppUserController extends ApiBaseController {
     @ApiOperation(value = "获取邮箱验证码")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "email", value = "邮箱", required = true, dataType = "string", paramType = "query"),
-            @ApiImplicitParam(name = "codeType", value = "类型(0:注册验证码;1:登录验证码;2:找回密码验证码;3:修改密码验证码;4:邮箱绑定验证码 100提现验证 邮箱验证码)", required = true, dataType = "int", paramType = "query")
+            @ApiImplicitParam(name = "codeType", value = "类型(0:注册验证码;1:登录验证码;2:找回密码验证码;3:修改密码验证码;4:邮箱绑定验证码 100提现验证 邮箱验证码)", required = true, dataType = "int", paramType = "query"),
+            @ApiImplicitParam(name = "activeCode", value = "注册邀请码", required = false, dataType = "string", paramType = "query")
     })
     @PostMapping("/sendEmailCode")
-    public AjaxResult sendEmailCode(String codeType, String email) {
+    public AjaxResult sendEmailCode(@RequestParam("codeType") String codeType,
+                                    @RequestParam("email") String email,
+                                    @RequestParam(value = "activeCode", required = false) String activeCode) {
         if (StringUtils.isEmpty(email)) {
             return AjaxResult.error(MessageUtils.message("email.code_empty"));
         }
@@ -231,6 +238,15 @@ public class TAppUserController extends ApiBaseController {
         } catch (Exception e) {
             log.warn("invalid email code type: {}", codeType);
             return AjaxResult.error(MessageUtils.message(EMAIL_CODE_SEND_FAILED_KEY));
+        }
+        if (UserCodeTypeEnum.REGISTER.equals(userCodeType)) {
+            if (StringUtils.isBlank(activeCode)) {
+                return AjaxResult.error(MessageUtils.message("user.register.invite.empty"));
+            }
+            activeCode = activeCode.trim();
+            if (tAppUserService.selectByActiveCode(activeCode) == null) {
+                return AjaxResult.error(MessageUtils.message("user.register.invite.invalid"));
+            }
         }
         int emailCount = tAppUserService.checkEmailUnique(email);
         if (isEmailCodeRequireUnusedEmail(userCodeType) && emailCount > 0) {
@@ -248,9 +264,13 @@ public class TAppUserController extends ApiBaseController {
             return AjaxResult.error(MessageUtils.message("email.code_send_too_frequent", seconds));
         }
         try {
-            tAppUserService.sendEmailCode(userCodeType.name(), email);
+            String emailCode = tAppUserService.sendEmailCode(userCodeType.name(), email);
             redisCache.setCacheObject(sendLimitKey, "1", EMAIL_CODE_SEND_INTERVAL_SECONDS, TimeUnit.SECONDS);
-            return AjaxResult.success(MessageUtils.message("app.verification.email.code"));
+            String successMessage = MessageUtils.message("app.verification.email.code");
+            if (isEmailDebugResponseEnabled() && StringUtils.isNotBlank(emailCode)) {
+                successMessage = successMessage + ": " + emailCode;
+            }
+            return AjaxResult.success(successMessage);
         } catch (Exception e) {
             log.error("send email code failed, type={}, email={}", userCodeType.name(), email, e);
         }
@@ -530,7 +550,16 @@ public class TAppUserController extends ApiBaseController {
     }
 
     private boolean isEmailCodeRequireUnusedEmail(UserCodeTypeEnum codeType) {
-        return UserCodeTypeEnum.REGISTER.equals(codeType) || UserCodeTypeEnum.BIND.equals(codeType);
+        return UserCodeTypeEnum.BIND.equals(codeType);
+    }
+
+    private boolean isEmailDebugResponseEnabled() {
+        try {
+            Boolean enabled = environment.getProperty("email.debug-response.enabled", Boolean.class, false);
+            return Boolean.TRUE.equals(enabled);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private UserCodeTypeEnum resolveEmailCodeType(String codeType) {

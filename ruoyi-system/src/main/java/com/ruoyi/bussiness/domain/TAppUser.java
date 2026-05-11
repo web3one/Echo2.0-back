@@ -29,7 +29,7 @@ private static final long serialVersionUID=1L;
     /**
      * $column.columnComment
      */
-    @TableId(value = "user_id",type = IdType.AUTO)
+    @TableId(value = "user_id",type = IdType.INPUT)
     @Excel(name = "用户id")
     private Long userId;
 

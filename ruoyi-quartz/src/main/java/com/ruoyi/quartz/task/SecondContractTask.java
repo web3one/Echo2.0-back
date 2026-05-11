@@ -53,17 +53,7 @@ public class SecondContractTask {
 
     public void secondContract() {
         try {
-            //查找所有正在参与的秒合约订单  状态为参与中  结束时间小于当前时间
-            List<TSecondContractOrder> list = secondContractOrderService.list(
-                    new LambdaQueryWrapper<TSecondContractOrder>()
-                            .eq(TSecondContractOrder::getStatus, "0")
-                            .lt(TSecondContractOrder::getCloseTime,new Date().getTime())
-            );
-            for (TSecondContractOrder order : list) {
-                TAppUser tAppUser = appUserService.selectTAppUserByUserId(order.getUserId());
-                settlement(order, tAppUser);
-            }
-
+            secondContractOrderService.settleExpiredOrders(null);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -212,9 +202,18 @@ public class SecondContractTask {
                 }
             }
             if(returnAmount.compareTo(BigDecimal.ZERO)>0){
-                //返回至 用户资产
-                Map<String, TAppAsset> assetByUserIdList = assetService.getAssetByUserIdList(order.getUserId());
-                TAppAsset appAsset = assetByUserIdList.get(order.getBaseSymbol()+ order.getUserId());
+                // 秒合约收益返回至合约资产，与U本位共用合约账户
+                TAppAsset appAsset = assetService.getOne(new LambdaQueryWrapper<TAppAsset>()
+                        .eq(TAppAsset::getUserId, order.getUserId())
+                        .eq(TAppAsset::getSymbol, order.getBaseSymbol().toLowerCase())
+                        .eq(TAppAsset::getType, AssetEnum.CONTRACT_ASSETS.getCode()));
+                if (Objects.isNull(appAsset)) {
+                    assetService.createAsset(tAppUser, order.getBaseSymbol().toLowerCase(), AssetEnum.CONTRACT_ASSETS.getCode());
+                    appAsset = assetService.getOne(new LambdaQueryWrapper<TAppAsset>()
+                            .eq(TAppAsset::getUserId, order.getUserId())
+                            .eq(TAppAsset::getSymbol, order.getBaseSymbol().toLowerCase())
+                            .eq(TAppAsset::getType, AssetEnum.CONTRACT_ASSETS.getCode()));
+                }
                 BigDecimal availableAmount = appAsset.getAvailableAmount();
                 appAsset.setAmout(appAsset.getAmout().add(returnAmount));
                 appAsset.setAvailableAmount(availableAmount.add(returnAmount));
