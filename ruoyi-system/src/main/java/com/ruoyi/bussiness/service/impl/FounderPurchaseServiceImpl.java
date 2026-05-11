@@ -7,12 +7,18 @@ import com.ruoyi.bussiness.domain.TAppUser;
 import com.ruoyi.bussiness.domain.TAppUserDetail;
 import com.ruoyi.bussiness.domain.TFounderPurchaseLog;
 import com.ruoyi.bussiness.domain.TFounderSeat;
+import com.ruoyi.bussiness.domain.TXgtBalance;
+import com.ruoyi.bussiness.domain.TXgtLockPlan;
+import com.ruoyi.bussiness.domain.TXgtLog;
 import com.ruoyi.bussiness.domain.dto.FounderPurchaseDTO;
 import com.ruoyi.bussiness.domain.vo.FounderPurchaseResultVO;
 import com.ruoyi.bussiness.domain.vo.FounderStatusVO;
 import com.ruoyi.bussiness.mapper.TAppAssetMapper;
 import com.ruoyi.bussiness.mapper.TFounderPurchaseLogMapper;
 import com.ruoyi.bussiness.mapper.TFounderSeatMapper;
+import com.ruoyi.bussiness.mapper.TXgtBalanceMapper;
+import com.ruoyi.bussiness.mapper.TXgtLockPlanMapper;
+import com.ruoyi.bussiness.mapper.TXgtLogMapper;
 import com.ruoyi.bussiness.service.IFounderPurchaseService;
 import com.ruoyi.bussiness.service.ITAppUserService;
 import com.ruoyi.bussiness.service.ITAppWalletRecordService;
@@ -44,6 +50,14 @@ public class FounderPurchaseServiceImpl implements IFounderPurchaseService {
     private static final String USDT_SYMBOL = "usdt";
     private static final int TOTAL_SEATS = 49;
 
+    /**
+     * PRD §12.5：49 席合计 $XGT 总供应 10%，每席均分。
+     * 总供应 100,000,000,000 × 10% / 49 ≈ 204,081,632.65 XGT。
+     */
+    private static final BigDecimal XGT_PER_SEAT = new BigDecimal("204081632.65306122");
+    private static final long XGT_LOCK_DAYS = 30L;
+    private static final long ONE_DAY_MILLIS = 86_400_000L;
+
     @Resource
     private TFounderSeatMapper founderSeatMapper;
 
@@ -58,6 +72,13 @@ public class FounderPurchaseServiceImpl implements IFounderPurchaseService {
 
     @Resource
     private ITAppWalletRecordService walletRecordService;
+
+    @Resource
+    private TXgtLockPlanMapper xgtLockPlanMapper;
+    @Resource
+    private TXgtBalanceMapper xgtBalanceMapper;
+    @Resource
+    private TXgtLogMapper xgtLogMapper;
 
     @Override
     public FounderStatusVO getStatus(Long userId) {
@@ -240,8 +261,94 @@ public class FounderPurchaseServiceImpl implements IFounderPurchaseService {
                 USDT_SYMBOL,
                 user.getAdminParentIds());
 
+        // 11. 创建 XGT 锁仓 plan（C-1 补单：PRD §12.5 49 席各享 $XGT 总供应 10% / 49）
+        try {
+            Long planId = createFounderXgtLockPlan(userId, seat, now);
+            if (planId != null) {
+                TFounderSeat upd = new TFounderSeat();
+                upd.setId(seat.getId());
+                upd.setXgtLockPlanId(planId);
+                founderSeatMapper.updateById(upd);
+            }
+        } catch (Exception e) {
+            // XGT 锁仓异常不阻塞购买主流程；客服可手工补单
+            log.error("founder XGT lock plan creation failed seatId={} userId={}",
+                    seat.getId(), userId, e);
+        }
+
         log.info("founder buy success: userId={} seatNo={} amount={} ip={}",
                 userId, seat.getSeatNo(), price, clientIp);
         return FounderPurchaseResultVO.from(seat, price, false);
+    }
+
+    /**
+     * 为创世购买创建 XGT 30 天锁仓 plan + 增加 t_xgt_balance.balance_locked。
+     * 幂等：UK(source_type, source_ref_id=seat.id) 撞键则读已有 plan，不重复发。
+     */
+    private Long createFounderXgtLockPlan(Long userId, TFounderSeat seat, Date now) {
+        BigDecimal xgtAmount = XGT_PER_SEAT;
+        Date releaseAt = new Date(now.getTime() + XGT_LOCK_DAYS * ONE_DAY_MILLIS);
+
+        TXgtLockPlan plan = new TXgtLockPlan();
+        plan.setUserId(userId);
+        plan.setSourceType(TXgtLockPlan.SOURCE_FOUNDER_SEAT);
+        plan.setSourceRefId(String.valueOf(seat.getId()));
+        plan.setAmountXgt(xgtAmount);
+        plan.setAmountUsdNominal(xgtAmount);
+        plan.setLockedAt(now);
+        plan.setReleaseAt(releaseAt);
+        plan.setStatus(TXgtLockPlan.STATUS_LOCKED);
+        plan.setRemark("Founder seat #" + seat.getSeatNo() + " XGT allocation");
+        try {
+            xgtLockPlanMapper.insert(plan);
+        } catch (DuplicateKeyException e) {
+            // 幂等命中：读已存在 plan，不重发不写余额
+            TXgtLockPlan exist = xgtLockPlanMapper.selectBySource(
+                    TXgtLockPlan.SOURCE_FOUNDER_SEAT, String.valueOf(seat.getId()));
+            return exist != null ? exist.getId() : null;
+        }
+        Long planId = plan.getId();
+
+        // 增加 XGT balance_locked
+        TXgtBalance bal = xgtBalanceMapper.selectByUserId(userId);
+        BigDecimal newLocked;
+        BigDecimal currentUnlocked;
+        if (bal == null) {
+            bal = new TXgtBalance();
+            bal.setUserId(userId);
+            bal.setBalanceLocked(xgtAmount);
+            bal.setBalanceUnlocked(BigDecimal.ZERO);
+            try {
+                xgtBalanceMapper.insert(bal);
+                newLocked = xgtAmount;
+                currentUnlocked = BigDecimal.ZERO;
+            } catch (DuplicateKeyException ex) {
+                bal = xgtBalanceMapper.selectByUserId(userId);
+                BigDecimal curL = bal.getBalanceLocked() == null ? BigDecimal.ZERO : bal.getBalanceLocked();
+                newLocked = curL.add(xgtAmount);
+                currentUnlocked = bal.getBalanceUnlocked() == null ? BigDecimal.ZERO : bal.getBalanceUnlocked();
+                bal.setBalanceLocked(newLocked);
+                xgtBalanceMapper.updateById(bal);
+            }
+        } else {
+            BigDecimal curL = bal.getBalanceLocked() == null ? BigDecimal.ZERO : bal.getBalanceLocked();
+            newLocked = curL.add(xgtAmount);
+            currentUnlocked = bal.getBalanceUnlocked() == null ? BigDecimal.ZERO : bal.getBalanceUnlocked();
+            bal.setBalanceLocked(newLocked);
+            xgtBalanceMapper.updateById(bal);
+        }
+
+        // 写 XGT 流水
+        TXgtLog logRow = new TXgtLog();
+        logRow.setUserId(userId);
+        logRow.setChangeType(TXgtLog.CHANGE_LOCK);
+        logRow.setAmountXgt(xgtAmount);
+        logRow.setBalanceLockedAfter(newLocked);
+        logRow.setBalanceUnlockedAfter(currentUnlocked);
+        logRow.setRelatedLockPlanId(planId);
+        logRow.setRemark("Founder seat #" + seat.getSeatNo() + " XGT lock");
+        xgtLogMapper.insert(logRow);
+
+        return planId;
     }
 }

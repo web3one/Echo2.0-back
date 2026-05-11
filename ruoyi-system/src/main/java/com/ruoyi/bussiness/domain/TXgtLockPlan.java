@@ -31,6 +31,8 @@ public class TXgtLockPlan implements Serializable {
     public static final String SOURCE_PRIVATE_SALE = "private_sale";
     public static final String SOURCE_ECOSYSTEM_FUND = "ecosystem_fund";
     public static final String SOURCE_PARTNER = "partner";
+    /** PRD §10 用户为解锁 ecosystem_credit 主动锁仓 XGT 30 天 */
+    public static final String SOURCE_CREDIT_UNLOCK = "credit_unlock";
 
     public static final String STATUS_LOCKED = "locked";
     public static final String STATUS_RELEASABLE = "releasable";

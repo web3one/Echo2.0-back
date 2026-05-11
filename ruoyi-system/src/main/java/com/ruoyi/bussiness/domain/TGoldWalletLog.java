@@ -32,6 +32,8 @@ public class TGoldWalletLog implements Serializable {
     public static final String CHANGE_REWARD_AGENCY_FEE = "reward_agency_fee";
     /** 创世合伙人手续费分红入账 */
     public static final String CHANGE_REWARD_FOUNDER_FEE = "reward_founder_fee";
+    /** ecosystem_credit 解锁后转入金矿子钱包（PRD §10） */
+    public static final String CHANGE_REWARD_ECO_CREDIT_UNLOCK = "reward_eco_credit_unlock";
     /** 提现至现货（出账） */
     public static final String CHANGE_WITHDRAW_OUT = "withdraw_out";
     /** 提现失败退款（入账） */

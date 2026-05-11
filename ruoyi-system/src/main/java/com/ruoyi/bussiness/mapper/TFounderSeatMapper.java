@@ -25,4 +25,9 @@ public interface TFounderSeatMapper extends BaseMapper<TFounderSeat> {
     /** 查我的席位（一人一席 UK） */
     @Select("SELECT * FROM t_founder_seat WHERE owner_user_id = #{userId} LIMIT 1")
     TFounderSeat selectByOwnerUserId(@Param("userId") Long userId);
+
+    /** 查所有 owned 状态席位（创世分红 cron 用，冻结 / available 都不参与分红） */
+    @Select("SELECT * FROM t_founder_seat WHERE status = 'owned' AND owner_user_id IS NOT NULL "
+            + "ORDER BY seat_no ASC")
+    java.util.List<TFounderSeat> selectAllOwned();
 }

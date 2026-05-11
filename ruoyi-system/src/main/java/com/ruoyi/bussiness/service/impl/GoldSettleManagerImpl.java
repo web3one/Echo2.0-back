@@ -2,11 +2,14 @@ package com.ruoyi.bussiness.service.impl;
 
 import com.ruoyi.bussiness.domain.TSettleLog;
 import com.ruoyi.bussiness.domain.vo.SettleResult;
+import com.ruoyi.bussiness.service.IAgencyGlobalDividendSettleService;
 import com.ruoyi.bussiness.service.IAgencyTeamRewardSettleService;
 import com.ruoyi.bussiness.service.IDailyFeeSummaryService;
+import com.ruoyi.bussiness.service.IFounderDividendSettleService;
 import com.ruoyi.bussiness.service.IGoldSettleManager;
 import com.ruoyi.bussiness.service.IStaticRewardSettleService;
 import com.ruoyi.bussiness.service.ITSettleLogService;
+import com.ruoyi.bussiness.service.IXgtLockReleaseSettleService;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.MessageUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +33,15 @@ public class GoldSettleManagerImpl implements IGoldSettleManager {
 
     @Resource
     private IDailyFeeSummaryService dailyFeeSummaryService;
+
+    @Resource
+    private IAgencyGlobalDividendSettleService agencyGlobalDividendSettleService;
+
+    @Resource
+    private IFounderDividendSettleService founderDividendSettleService;
+
+    @Resource
+    private IXgtLockReleaseSettleService xgtLockReleaseSettleService;
 
     @Override
     public TSettleLog retry(String jobName, LocalDate bizDate, Long adminId) {
@@ -65,12 +77,18 @@ public class GoldSettleManagerImpl implements IGoldSettleManager {
         if (TSettleLog.JOB_DAILY_FEE_SUMMARY.equals(jobName)) {
             return dailyFeeSummaryService.settle(bizDate, settleLogId);
         }
-        // 其他 4 个 task 当前为骨架空跑，retry 也保持 dry-run（与 cron 一致）
-        if (TSettleLog.JOB_AGENCY_GLOBAL_DIVIDEND.equals(jobName)
-                || TSettleLog.JOB_FOUNDER_DIVIDEND.equals(jobName)
-                || TSettleLog.JOB_XGT_LOCK_RELEASE.equals(jobName)
-                || TSettleLog.JOB_BINARY_DAILY_VOLUME_RESET.equals(jobName)) {
-            log.info("[settle.retry] dry-run skeleton job: {}", jobName);
+        if (TSettleLog.JOB_AGENCY_GLOBAL_DIVIDEND.equals(jobName)) {
+            return agencyGlobalDividendSettleService.settle(bizDate, settleLogId);
+        }
+        if (TSettleLog.JOB_FOUNDER_DIVIDEND.equals(jobName)) {
+            return founderDividendSettleService.settle(bizDate, settleLogId);
+        }
+        if (TSettleLog.JOB_XGT_LOCK_RELEASE.equals(jobName)) {
+            return xgtLockReleaseSettleService.settle(bizDate, settleLogId);
+        }
+        // binary_daily_volume_reset 设计上 no-op（V029 已是新业务日新行）
+        if (TSettleLog.JOB_BINARY_DAILY_VOLUME_RESET.equals(jobName)) {
+            log.info("[settle.retry] dry-run no-op job: {}", jobName);
             return SettleResult.empty();
         }
         throw new ServiceException(MessageUtils.message("settle.job.unknown"));
