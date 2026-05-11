@@ -33,6 +33,8 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         "/api/user/login",
                         "/api/user/backPwd",
                         "/api/user/bindPhoneEmail",
+                        "/api/kline",
+                        "/api/newKline",
                         "/api/coin/list",
                         "/api/user/bindPhoneEmail",
                         "/api/notice/**",

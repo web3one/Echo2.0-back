@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class KlineParamVO {
     //["ONE_MIN","FIVE_MIN","FIFTEEN_MIN","THIRTY_MIN","ONE_HOUR","TWO_HOUR","SIX_HOUR","ONE_DAY","TWO_DAY","SEVEN_DAY"]
-    private String Interval;
+    private String interval;
     //BTC  or  ETH  ....等等
     private String symbol;
 
