@@ -52,6 +52,15 @@ public enum RecordEnum {
     C2C_MERCHANT_DEPOSIT(64, "C2C商家保证金-"),
     C2C_MERCHANT_DEPOSIT_REFUND(65, "C2C商家保证金退还+"),
     GOLD_NODE_PURCHASE(70, "金矿矿机购买-"),
+    GOLD_STATIC_REWARD(71, "金矿静态分红+"),
+    GOLD_REFERRAL_REWARD(72, "金矿直推奖+"),
+    GOLD_TEAM_REWARD(73, "金矿团队代理奖+"),
+    GOLD_AGENCY_FEE(74, "金矿全网手续费分红+"),
+    GOLD_FOUNDER_FEE(75, "金矿创世合伙人分红+"),
+    GOLD_XGT_RELEASE(76, "金矿XGT锁仓释放+"),
+    GOLD_ECO_CREDIT_UNLOCK(77, "金矿生态额度解锁+"),
+    GOLD_FOUNDER_PURCHASE(78, "金矿创世席位购买-"),
+    GOLD_TO_SPOT_IN(79, "金矿转入现货+"),
     ;
     private final Integer code;
     private final String desc;

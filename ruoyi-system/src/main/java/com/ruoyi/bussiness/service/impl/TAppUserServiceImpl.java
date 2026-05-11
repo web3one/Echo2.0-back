@@ -347,18 +347,12 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
         if (null == tAppUser) {
             return MessageUtils.message("login.email.not_register");
         }
-        String emailLoginkey = String.format("%s%s", CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.FIND_PASSWORD.name(), email);
-        if (Boolean.TRUE.equals(redisCache.hasKey(emailLoginkey))) {
-            if (!emailCode.equalsIgnoreCase(redisCache.getCacheObject(emailLoginkey))) {
-                return MessageUtils.message("login.code_error");
-            }
-        } else {
+        if (!EmailUtils.verifyCode(email, UserCodeTypeEnum.FIND_PASSWORD, emailCode)) {
             return MessageUtils.message("login.code_error");
         }
         if (StringUtils.isEmpty(tAppUser.getLoginName())) {
             tAppUser.setLoginName(email);
         }
-        redisCache.deleteObject(emailLoginkey);
         tAppUser.setLoginPassword(newPwd);
         tAppUserMapper.updateTAppUser(tAppUser);
         return null;
@@ -410,23 +404,17 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
     @Override
     public String bindEmail(String email, String emailCode, HttpServletRequest request) {
         Long userId = StpUtil.getLoginIdAsLong();
-        final String registerEmailCode = String.format("%s%s", CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.BIND.name(), email);
         TAppUser tAppUser = this.selectTAppUserByUserId(userId);
         //未绑定
         if (this.checkEmailUnique(email) > 0) {
             return MessageUtils.message("user.register.email.exisit");
         }
-        if (Boolean.TRUE.equals(redisCache.hasKey(registerEmailCode))) {
-            if (!emailCode.equalsIgnoreCase(redisCache.getCacheObject(registerEmailCode).toString())) {
-                return MessageUtils.message("login.code_error");
-            }
-        } else {
-            return MessageUtils.message("login.code_error");
-        }
-        redisCache.deleteObject(registerEmailCode);
         email = email.trim();
         if (!EmailUtils.checkEmail(email)) {
             return MessageUtils.message("user.register.email.format");
+        }
+        if (!EmailUtils.verifyCode(email, UserCodeTypeEnum.BIND, emailCode)) {
+            return MessageUtils.message("login.code_error");
         }
         tAppUser.setEmail(email);
         this.updateTAppUser(tAppUser);
@@ -530,15 +518,9 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
             if (!emailOrPhone.equals(user.getEmail())) {
                 return MessageUtils.message("login.email.not_register");
             }
-            String emailLoginkey = String.format("%s%s", CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.FIND_PASSWORD.name(), emailOrPhone);
-            if (redisCache.hasKey(emailLoginkey)) {
-                if (!code.equalsIgnoreCase(redisCache.getCacheObject(emailLoginkey))) {
-                    return MessageUtils.message("login.code_error");
-                }
-            } else {
+            if (!EmailUtils.verifyCode(emailOrPhone, UserCodeTypeEnum.FIND_PASSWORD, code)) {
                 return MessageUtils.message("login.code_error");
             }
-            redisCache.deleteObject(emailLoginkey);
         }
         if ("3".equals(signType)) {
             //手机号找回
@@ -626,18 +608,12 @@ public class TAppUserServiceImpl extends ServiceImpl<TAppUserMapper, TAppUser> i
         if (null == tAppUser) {
             return MessageUtils.message("login.email.not_register");
         }
-        String emailLoginkey = String.format("%s%s", CachePrefix.EMAIL_CODE.getPrefix() + UserCodeTypeEnum.UPD_PASSWORD.name(), email);
-        if (Boolean.TRUE.equals(redisCache.hasKey(emailLoginkey))) {
-            if (!emailCode.equalsIgnoreCase(redisCache.getCacheObject(emailLoginkey))) {
-                return MessageUtils.message("login.code_error");
-            }
-        } else {
+        if (!EmailUtils.verifyCode(email, UserCodeTypeEnum.UPD_PASSWORD, emailCode)) {
             return MessageUtils.message("login.code_error");
         }
         if (StringUtils.isEmpty(tAppUser.getLoginName())) {
             tAppUser.setLoginName(email);
         }
-        redisCache.deleteObject(emailLoginkey);
         tAppUser.setLoginPassword(newPwd);
         tAppUserMapper.updateTAppUser(tAppUser);
         return null;

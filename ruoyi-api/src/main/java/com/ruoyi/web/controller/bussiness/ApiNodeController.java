@@ -1,24 +1,29 @@
 package com.ruoyi.web.controller.bussiness;
 
 import com.ruoyi.bussiness.domain.dto.NodeBuyDTO;
+import com.ruoyi.bussiness.domain.vo.MyMinerVO;
 import com.ruoyi.bussiness.domain.vo.NodeBuyResultVO;
 import com.ruoyi.bussiness.service.INodePurchaseService;
+import com.ruoyi.bussiness.service.INodeQueryService;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.web.controller.common.ApiBaseController;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import java.util.List;
 
 /**
  * AI 矿机用户端 Controller（金矿 Phase 1 P0）。
  *
  * 当前接口：
  *   POST /api/nodes/buy  购买矿机
+ *   GET  /api/nodes/my   我的矿机列表
  *
  * @date 2026-05-10
  */
@@ -29,6 +34,22 @@ public class ApiNodeController extends ApiBaseController {
 
     @Resource
     private INodePurchaseService nodePurchaseService;
+
+    @Resource
+    private INodeQueryService nodeQueryService;
+
+    /**
+     * 我的矿机列表（mining-gold 子站 swap MOCK_MY_MINERS）。
+     *
+     * 字段对齐 mining-gold App.tsx interface MyMiner（line 671）。
+     * 排序 active 优先，同 status 按 level 高 → 低，同 level 按 activatedAt 旧 → 新。
+     * isCurrentActive 标识当前有效权益矿机（仅 active 中 levelCode 最高 + 同级最早一台）。
+     */
+    @GetMapping("/my")
+    public AjaxResult listMyMiners() {
+        List<MyMinerVO> list = nodeQueryService.listMyMiners(getStpUserId());
+        return success(list);
+    }
 
     /**
      * 购买 AI 矿机。

@@ -5,12 +5,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ruoyi.bussiness.domain.TAppAsset;
 import com.ruoyi.bussiness.domain.TAppUser;
 import com.ruoyi.bussiness.domain.TAppUserDetail;
+import com.ruoyi.bussiness.domain.TBinaryTree;
 import com.ruoyi.bussiness.domain.TNodeInstance;
 import com.ruoyi.bussiness.domain.TNodeLevel;
 import com.ruoyi.bussiness.domain.TNodePurchaseLog;
+import com.ruoyi.bussiness.domain.TRewardLog;
 import com.ruoyi.bussiness.domain.dto.NodeBuyDTO;
 import com.ruoyi.bussiness.domain.vo.NodeBuyResultVO;
 import com.ruoyi.bussiness.mapper.TAppAssetMapper;
+import com.ruoyi.bussiness.mapper.TBinaryTreeMapper;
 import com.ruoyi.bussiness.mapper.TNodeInstanceMapper;
 import com.ruoyi.bussiness.mapper.TNodeLevelMapper;
 import com.ruoyi.bussiness.mapper.TNodePurchaseLogMapper;
@@ -32,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Date;
 
 /**
@@ -44,6 +49,7 @@ import java.util.Date;
 public class NodePurchaseServiceImpl implements INodePurchaseService {
 
     private static final String USDT_SYMBOL = "usdt";
+    private static final BigDecimal REFERRAL_RATE = new BigDecimal("0.10");
 
     @Resource
     private TNodeLevelMapper nodeLevelMapper;
@@ -68,6 +74,12 @@ public class NodePurchaseServiceImpl implements INodePurchaseService {
 
     @Resource
     private IBinaryTreeService binaryTreeService;
+
+    @Resource
+    private TBinaryTreeMapper binaryTreeMapper;
+
+    @Resource
+    private DynamicRewardHelper rewardHelper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -133,6 +145,17 @@ public class NodePurchaseServiceImpl implements INodePurchaseService {
         }
         if (!SecurityUtils.matchesPassword(dto.getFundPassword(), detail.getUserTardPwd())) {
             throw new ServiceException(MessageUtils.message("tard_password.error"));
+        }
+
+        // 4.5 同 level 矿机同时唯一（用户决策 2026-05-09：同 level 已持 active/frozen → 拒绝；
+        // expired/cancelled 不阻塞，等同于"出局后可重买开启新周期"）
+        Integer sameLevelCount = nodeInstanceMapper.selectCount(new LambdaQueryWrapper<TNodeInstance>()
+                .eq(TNodeInstance::getUserId, userId)
+                .eq(TNodeInstance::getLevelCode, level.getLevelCode())
+                .in(TNodeInstance::getStatus,
+                        TNodeInstance.STATUS_ACTIVE, TNodeInstance.STATUS_FROZEN));
+        if (sameLevelCount != null && sameLevelCount > 0) {
+            throw new ServiceException(MessageUtils.message("node.buy.level.duplicate"));
         }
 
         // 5. USDT 现货余额校验（type=PLATFORM_ASSETS / symbol=usdt 小写）
@@ -219,8 +242,64 @@ public class NodePurchaseServiceImpl implements INodePurchaseService {
             throw e;
         }
 
+        // 11. 直推奖（PRD §6 实时触发，与购买同事务）
+        // 公式 = buyer 购买金额 × 10%（PRD §6.4）
+        // 70/30 入账（70% USDT 现货 + 30% ecosystem_credit balance_locked）
+        // 上级无 active 矿机 → 不发（PRD §6.3）；上级冻结 → 不发（追问 A）
+        try {
+            awardReferralReward(userId, level.getLevelCode(), price, inst.getId());
+        } catch (Exception e) {
+            log.error("awardReferralReward failed: buyerUserId={} amount={} err={}",
+                    userId, price, e.getMessage(), e);
+            throw e;
+        }
+
         log.info("buyNode success: userId={} levelCode={} price={} instanceId={}",
                 userId, level.getLevelCode(), price, inst.getId());
         return NodeBuyResultVO.from(inst, false);
+    }
+
+    /**
+     * 沿"邀请关系树"找 buyer 的直推上级，给上级发直推奖。
+     *
+     * 直推上级 = t_binary_tree.sponsor_id（邀请码持有者，可能不是双轨直接父级）
+     * 幂等：t_reward_log idempotent_key = "REF:NODE-{instanceId}"，
+     *       与 nodes/buy idempotent_key 联动，购买重复提交直推奖也不会重发
+     */
+    private void awardReferralReward(Long buyerUserId, String buyerLevelCode,
+                                     BigDecimal buyerAmount, Long buyerInstanceId) {
+        TBinaryTree buyerNode = binaryTreeMapper.selectByUserId(buyerUserId);
+        if (buyerNode == null || buyerNode.getSponsorId() == null) {
+            log.info("[referral] buyer has no sponsor, skip: buyerUserId={}", buyerUserId);
+            return;
+        }
+        Long sponsorId = buyerNode.getSponsorId();
+
+        BigDecimal gross = buyerAmount.multiply(REFERRAL_RATE).setScale(8, RoundingMode.HALF_UP);
+        if (gross.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        String idempotentKey = "REF:NODE-" + buyerInstanceId;
+        LocalDate bizDate = LocalDate.now(ZoneOffset.UTC);
+        String walletInfoSuffix = "from " + buyerLevelCode;
+
+        BigDecimal credited = rewardHelper.awardDynamicReward(
+                sponsorId,
+                TRewardLog.TYPE_REFERRAL,
+                gross,
+                buyerUserId,
+                buyerAmount,
+                REFERRAL_RATE,
+                null,
+                idempotentKey,
+                null,
+                bizDate,
+                walletInfoSuffix);
+        if (credited == null) {
+            log.info("[referral] sponsor not eligible, skip: sponsorId={} buyerUserId={}",
+                    sponsorId, buyerUserId);
+        } else {
+            log.info("[referral] credited: sponsorId={} buyerUserId={} gross={} credited={}",
+                    sponsorId, buyerUserId, gross, credited);
+        }
     }
 }
