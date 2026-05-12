@@ -72,7 +72,16 @@ public class AgencyReviewServiceImpl implements IAgencyReviewService {
             }
         }
         wrapper.orderByDesc(TAgentApplication::getCreateTime);
-        IPage<TAgentApplication> page = applicationMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Page<TAgentApplication> raw = new Page<>(pageNum, pageSize);
+        Integer total = applicationMapper.selectCount(wrapper);
+        long totalLong = total == null ? 0L : total.longValue();
+        raw.setTotal(totalLong);
+        if (totalLong > 0) {
+            wrapper.last("LIMIT " + ((long)(pageNum - 1) * pageSize) + ", " + pageSize);
+            raw.setRecords(applicationMapper.selectList(wrapper));
+        }
+        IPage<TAgentApplication> page = raw;
         Page<AgentApplicationVO> ret = new Page<>(pageNum, pageSize);
         ret.setTotal(page.getTotal());
         List<AgentApplicationVO> records = new ArrayList<>(page.getRecords().size());

@@ -116,6 +116,15 @@ public class FounderAdminServiceImpl implements IFounderAdminService {
             }
         }
         wrapper.orderByDesc(TFounderPurchaseLog::getCreateTime);
-        return logMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Page<TFounderPurchaseLog> p = new Page<>(pageNum, pageSize);
+        Integer total = logMapper.selectCount(wrapper);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            wrapper.last("LIMIT " + ((long)(pageNum - 1) * pageSize) + ", " + pageSize);
+            p.setRecords(logMapper.selectList(wrapper));
+        }
+        return p;
     }
 }

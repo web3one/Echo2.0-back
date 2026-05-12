@@ -35,8 +35,15 @@ public class AggregationListController extends BaseController {
                 .orderByDesc(TAggregationTask::getId);
         if (chain != null && !chain.isEmpty()) q.eq(TAggregationTask::getChain, chain.toUpperCase());
 
-        com.baomidou.mybatisplus.core.metadata.IPage<TAggregationTask> page =
-                taskMapper.selectPage(new Page<>(pageNum, pageSize), q);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        com.baomidou.mybatisplus.core.metadata.IPage<TAggregationTask> page = new Page<>(pageNum, pageSize);
+        Integer total = taskMapper.selectCount(q);
+        long totalLong = total == null ? 0L : total.longValue();
+        page.setTotal(totalLong);
+        if (totalLong > 0) {
+            q.last("LIMIT " + ((long)(pageNum - 1) * pageSize) + ", " + pageSize);
+            page.setRecords(taskMapper.selectList(q));
+        }
         TableDataInfo info = new TableDataInfo();
         info.setRows(page.getRecords());
         info.setTotal(page.getTotal());

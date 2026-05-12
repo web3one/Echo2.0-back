@@ -30,7 +30,15 @@ public class GoldWalletAdminServiceImpl implements IGoldWalletAdminService {
             qw.eq(TGoldWallet::getUserId, query.getUserId());
         }
         qw.orderByDesc(TGoldWallet::getUsdtBalance);
-        return goldWalletMapper.selectPage(p, qw);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Integer total = goldWalletMapper.selectCount(qw);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            qw.last("LIMIT " + ((pn - 1) * ps) + ", " + ps);
+            p.setRecords(goldWalletMapper.selectList(qw));
+        }
+        return p;
     }
 
     @Override
@@ -54,6 +62,14 @@ public class GoldWalletAdminServiceImpl implements IGoldWalletAdminService {
             }
         }
         qw.orderByDesc(TGoldWalletLog::getId);
-        return goldWalletLogMapper.selectPage(p, qw);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Integer total = goldWalletLogMapper.selectCount(qw);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            qw.last("LIMIT " + ((pn - 1) * ps) + ", " + ps);
+            p.setRecords(goldWalletLogMapper.selectList(qw));
+        }
+        return p;
     }
 }

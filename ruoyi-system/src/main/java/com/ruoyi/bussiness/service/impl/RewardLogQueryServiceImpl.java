@@ -47,7 +47,15 @@ public class RewardLogQueryServiceImpl implements IRewardLogQueryService {
         wrapper.orderByDesc(TRewardLog::getCreateTime).orderByDesc(TRewardLog::getId);
 
         Page<TRewardLog> page = new Page<>(q.safePageNum(), q.safePageSize());
-        IPage<TRewardLog> raw = rewardLogMapper.selectPage(page, wrapper);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Integer total = rewardLogMapper.selectCount(wrapper);
+        long totalLong = total == null ? 0L : total.longValue();
+        page.setTotal(totalLong);
+        if (totalLong > 0) {
+            wrapper.last("LIMIT " + ((q.safePageNum() - 1) * q.safePageSize()) + ", " + q.safePageSize());
+            page.setRecords(rewardLogMapper.selectList(wrapper));
+        }
+        IPage<TRewardLog> raw = page;
 
         return raw.convert(RewardEntryVO::from);
     }

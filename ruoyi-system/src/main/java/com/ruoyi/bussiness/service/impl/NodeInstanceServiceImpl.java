@@ -42,7 +42,16 @@ public class NodeInstanceServiceImpl implements INodeInstanceService {
             }
         }
         wrapper.orderByDesc(TNodeInstance::getCreateTime);
-        return nodeInstanceMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Page<TNodeInstance> p = new Page<>(pageNum, pageSize);
+        Integer total = nodeInstanceMapper.selectCount(wrapper);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            wrapper.last("LIMIT " + ((long)(pageNum - 1) * pageSize) + ", " + pageSize);
+            p.setRecords(nodeInstanceMapper.selectList(wrapper));
+        }
+        return p;
     }
 
     @Override

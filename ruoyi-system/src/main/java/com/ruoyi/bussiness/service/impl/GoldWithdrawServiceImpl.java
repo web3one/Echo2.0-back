@@ -210,10 +210,18 @@ public class GoldWithdrawServiceImpl implements IGoldWithdrawService {
         long pn = pageNum == null || pageNum < 1 ? 1 : pageNum;
         long ps = pageSize == null || pageSize < 1 ? 20 : Math.min(pageSize, 100);
         Page<TGoldWithdrawOrder> p = new Page<>(pn, ps);
-        return withdrawOrderMapper.selectPage(p,
-                new LambdaQueryWrapper<TGoldWithdrawOrder>()
-                        .eq(TGoldWithdrawOrder::getUserId, userId)
-                        .orderByDesc(TGoldWithdrawOrder::getCreateTime));
+        LambdaQueryWrapper<TGoldWithdrawOrder> qw = new LambdaQueryWrapper<TGoldWithdrawOrder>()
+                .eq(TGoldWithdrawOrder::getUserId, userId)
+                .orderByDesc(TGoldWithdrawOrder::getCreateTime);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Integer total = withdrawOrderMapper.selectCount(qw);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            qw.last("LIMIT " + ((pn - 1) * ps) + ", " + ps);
+            p.setRecords(withdrawOrderMapper.selectList(qw));
+        }
+        return p;
     }
 
     private BigDecimal readRate(String key) {

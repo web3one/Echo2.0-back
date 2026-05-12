@@ -130,6 +130,15 @@ public class PoolServiceImpl implements IPoolService {
         if (symbol != null && !symbol.isEmpty()) q.eq(TPoolLog::getSymbol, symbol.toUpperCase());
         if (chain != null && !chain.isEmpty()) q.eq(TPoolLog::getChain, chain.toUpperCase());
         if (changeType != null && !changeType.isEmpty()) q.eq(TPoolLog::getChangeType, changeType);
-        return poolLogMapper.selectPage(new Page<>(pageNum, pageSize), q);
+        // MP 3.4.1 PaginationInnerInterceptor BUG 规避：手动 selectCount + selectList(LIMIT)
+        Page<TPoolLog> p = new Page<>(pageNum, pageSize);
+        Integer total = poolLogMapper.selectCount(q);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            q.last("LIMIT " + ((long)(pageNum - 1) * pageSize) + ", " + pageSize);
+            p.setRecords(poolLogMapper.selectList(q));
+        }
+        return p;
     }
 }
