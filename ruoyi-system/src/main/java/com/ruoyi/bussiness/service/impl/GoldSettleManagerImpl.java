@@ -7,6 +7,7 @@ import com.ruoyi.bussiness.service.IAgencyTeamRewardSettleService;
 import com.ruoyi.bussiness.service.IDailyFeeSummaryService;
 import com.ruoyi.bussiness.service.IFounderDividendSettleService;
 import com.ruoyi.bussiness.service.IGoldSettleManager;
+import com.ruoyi.bussiness.service.IPoolHealthMonitorService;
 import com.ruoyi.bussiness.service.IStaticRewardSettleService;
 import com.ruoyi.bussiness.service.ITSettleLogService;
 import com.ruoyi.bussiness.service.IXgtLockReleaseSettleService;
@@ -42,6 +43,9 @@ public class GoldSettleManagerImpl implements IGoldSettleManager {
 
     @Resource
     private IXgtLockReleaseSettleService xgtLockReleaseSettleService;
+
+    @Resource
+    private IPoolHealthMonitorService poolHealthMonitorService;
 
     @Override
     public TSettleLog retry(String jobName, LocalDate bizDate, Long adminId) {
@@ -85,6 +89,9 @@ public class GoldSettleManagerImpl implements IGoldSettleManager {
         }
         if (TSettleLog.JOB_XGT_LOCK_RELEASE.equals(jobName)) {
             return xgtLockReleaseSettleService.settle(bizDate, settleLogId);
+        }
+        if (TSettleLog.JOB_POOL_HEALTH_MONITOR.equals(jobName)) {
+            return poolHealthMonitorService.settle(bizDate, settleLogId);
         }
         // binary_daily_volume_reset 设计上 no-op（V029 已是新业务日新行）
         if (TSettleLog.JOB_BINARY_DAILY_VOLUME_RESET.equals(jobName)) {

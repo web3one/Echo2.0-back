@@ -2,6 +2,7 @@ package com.ruoyi.web.controller.bussiness;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ruoyi.bussiness.domain.TSettleLog;
+import com.ruoyi.bussiness.domain.vo.SettleReconcileVO;
 import com.ruoyi.bussiness.service.IGoldSettleManager;
 import com.ruoyi.bussiness.service.ITSettleLogService;
 import com.ruoyi.common.annotation.Log;
@@ -9,6 +10,7 @@ import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.common.utils.SecurityUtils;
+import com.ruoyi.common.utils.poi.ExcelUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,7 +21,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletResponse;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 金矿 6 个定时任务结算日志 Controller（admin 监控 + 重试）
@@ -74,5 +78,26 @@ public class TSettleLogController extends BaseController {
         Long adminId = SecurityUtils.getUserId();
         TSettleLog row = goldSettleManager.retry(jobName, bizDate, adminId);
         return success(row);
+    }
+
+    @PreAuthorize("@ss.hasPermi('bussiness:settle:export')")
+    @Log(title = "金矿结算 - 导出", businessType = BusinessType.EXPORT)
+    @PostMapping("/export")
+    public void export(HttpServletResponse response,
+                       @RequestParam(value = "jobName", required = false) String jobName,
+                       @RequestParam(value = "bizDate", required = false)
+                       @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate bizDate,
+                       @RequestParam(value = "status", required = false) String status) {
+        List<TSettleLog> rows = settleLogService.listForExport(jobName, bizDate, status);
+        ExcelUtil<TSettleLog> util = new ExcelUtil<>(TSettleLog.class);
+        util.exportExcel(response, rows, "金矿结算日志");
+    }
+
+    @PreAuthorize("@ss.hasPermi('bussiness:settle:reconcile')")
+    @GetMapping("/reconcile")
+    public AjaxResult reconcile(@RequestParam("bizDate")
+                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate bizDate) {
+        SettleReconcileVO vo = settleLogService.reconcile(bizDate);
+        return success(vo);
     }
 }

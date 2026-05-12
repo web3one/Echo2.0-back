@@ -5,8 +5,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ruoyi.bussiness.domain.TDailyFeeSummary;
 import com.ruoyi.bussiness.domain.TSettleLog;
+import com.ruoyi.bussiness.domain.vo.SettleReconcileVO;
 import com.ruoyi.bussiness.domain.vo.SettleResult;
+import com.ruoyi.bussiness.mapper.TDailyFeeSummaryMapper;
 import com.ruoyi.bussiness.mapper.TSettleLogMapper;
 import com.ruoyi.bussiness.service.ITSettleLogService;
 import com.ruoyi.common.exception.ServiceException;
@@ -16,8 +19,12 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 
 @Service
 @Slf4j
@@ -25,8 +32,23 @@ public class TSettleLogServiceImpl implements ITSettleLogService {
 
     private static final int ERR_MSG_MAX = 2000;
 
+    private static final int EXPORT_CAP = 1000;
+    private static final BigDecimal WARN_THRESHOLD = new BigDecimal("0.80");
+    private static final BigDecimal CRITICAL_THRESHOLD = BigDecimal.ONE;
+
+    /** 计入"USDT 分红消耗"的 cron 名 */
+    private static final List<String> DIVIDEND_JOBS = Arrays.asList(
+            TSettleLog.JOB_DAILY_STATIC_REWARD,
+            TSettleLog.JOB_AGENCY_TEAM_REWARD,
+            TSettleLog.JOB_AGENCY_GLOBAL_DIVIDEND,
+            TSettleLog.JOB_FOUNDER_DIVIDEND
+    );
+
     @Resource
     private TSettleLogMapper mapper;
+
+    @Resource
+    private TDailyFeeSummaryMapper dailyFeeSummaryMapper;
 
     @Override
     public TSettleLog tryStart(String jobName, LocalDate bizDate) {
@@ -124,5 +146,94 @@ public class TSettleLogServiceImpl implements ITSettleLogService {
         }
         qw.orderByDesc(TSettleLog::getStartedAt);
         return mapper.selectPage(new Page<>(pageNum, pageSize), qw);
+    }
+
+    @Override
+    public List<TSettleLog> listForExport(String jobName, LocalDate bizDate, String status) {
+        LambdaQueryWrapper<TSettleLog> qw = new LambdaQueryWrapper<>();
+        if (StrUtil.isNotBlank(jobName)) {
+            qw.eq(TSettleLog::getJobName, jobName);
+        }
+        if (bizDate != null) {
+            qw.eq(TSettleLog::getBizDate, bizDate);
+        }
+        if (StrUtil.isNotBlank(status)) {
+            qw.eq(TSettleLog::getStatus, status);
+        }
+        qw.orderByDesc(TSettleLog::getStartedAt).last("LIMIT " + EXPORT_CAP);
+        return mapper.selectList(qw);
+    }
+
+    @Override
+    public SettleReconcileVO reconcile(LocalDate bizDate) {
+        SettleReconcileVO vo = new SettleReconcileVO();
+        vo.setBizDate(bizDate);
+
+        // 1. 分红基数（spot + contract + 提现费分项）
+        TDailyFeeSummary fee = dailyFeeSummaryMapper.selectByBizDate(bizDate);
+        if (fee != null) {
+            vo.setDividendBaseUsdt(nz(fee.getDividendBaseUsdt()));
+            vo.setSpotFeeUsdt(nz(fee.getSpotFeeUsdt()));
+            vo.setContractFeeUsdt(nz(fee.getContractFeeUsdt()));
+            vo.setGoldWithdrawFeeUsdt(nz(fee.getGoldWithdrawFeeUsdt()));
+            vo.setGoldWithdrawFounderShareUsdt(nz(fee.getGoldWithdrawFounderShareUsdt()));
+            vo.setGoldWithdrawPlatformFeeUsdt(nz(fee.getGoldWithdrawPlatformFeeUsdt()));
+        } else {
+            vo.setDividendBaseUsdt(BigDecimal.ZERO);
+            vo.setSpotFeeUsdt(BigDecimal.ZERO);
+            vo.setContractFeeUsdt(BigDecimal.ZERO);
+            vo.setGoldWithdrawFeeUsdt(BigDecimal.ZERO);
+            vo.setGoldWithdrawFounderShareUsdt(BigDecimal.ZERO);
+            vo.setGoldWithdrawPlatformFeeUsdt(BigDecimal.ZERO);
+        }
+
+        // 2. 当日所有 cron（含 pool_health_monitor / xgt_release / 等所有 8 个）
+        List<TSettleLog> rows = mapper.selectList(
+                new LambdaQueryWrapper<TSettleLog>()
+                        .eq(TSettleLog::getBizDate, bizDate)
+                        .orderByAsc(TSettleLog::getStartedAt));
+        List<SettleReconcileVO.JobAgg> jobs = new ArrayList<>(rows.size());
+        BigDecimal totalDividends = BigDecimal.ZERO;
+        for (TSettleLog row : rows) {
+            SettleReconcileVO.JobAgg agg = new SettleReconcileVO.JobAgg();
+            agg.setJobName(row.getJobName());
+            agg.setStatus(row.getStatus());
+            agg.setTotalCount(row.getTotalCount());
+            agg.setSuccessCount(row.getSuccessCount());
+            agg.setFailedCount(row.getFailedCount());
+            agg.setSkippedCount(row.getSkippedCount());
+            agg.setAmountSettledUsdt(row.getAmountSettledUsdt());
+            agg.setErrorMessage(row.getErrorMessage());
+            jobs.add(agg);
+            if (TSettleLog.STATUS_SUCCESS.equals(row.getStatus())
+                    && DIVIDEND_JOBS.contains(row.getJobName())
+                    && row.getAmountSettledUsdt() != null) {
+                totalDividends = totalDividends.add(row.getAmountSettledUsdt());
+            }
+        }
+        vo.setJobs(jobs);
+        vo.setTotalDividendsSettledUsdt(totalDividends);
+
+        // 3. 资金池健康度
+        BigDecimal feeBase = vo.getDividendBaseUsdt();
+        if (feeBase.compareTo(BigDecimal.ZERO) <= 0) {
+            vo.setRatio(null);
+            vo.setHealthLevel(totalDividends.compareTo(BigDecimal.ZERO) > 0 ? "CRITICAL" : "NO_DATA");
+        } else {
+            BigDecimal ratio = totalDividends.divide(feeBase, 6, RoundingMode.HALF_UP);
+            vo.setRatio(ratio);
+            if (ratio.compareTo(CRITICAL_THRESHOLD) > 0) {
+                vo.setHealthLevel("CRITICAL");
+            } else if (ratio.compareTo(WARN_THRESHOLD) > 0) {
+                vo.setHealthLevel("WARN");
+            } else {
+                vo.setHealthLevel("OK");
+            }
+        }
+        return vo;
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }

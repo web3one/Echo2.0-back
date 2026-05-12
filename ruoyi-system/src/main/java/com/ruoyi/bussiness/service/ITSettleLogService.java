@@ -2,9 +2,11 @@ package com.ruoyi.bussiness.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ruoyi.bussiness.domain.TSettleLog;
+import com.ruoyi.bussiness.domain.vo.SettleReconcileVO;
 import com.ruoyi.bussiness.domain.vo.SettleResult;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 结算日志服务（金矿 6 个定时任务幂等中枢）
@@ -41,4 +43,10 @@ public interface ITSettleLogService {
     TSettleLog getById(Long id);
 
     IPage<TSettleLog> page(int pageNum, int pageSize, String jobName, LocalDate bizDate, String status);
+
+    /** 导出（同 page 条件，但 cap 1000 防爆） */
+    List<TSettleLog> listForExport(String jobName, LocalDate bizDate, String status);
+
+    /** 财务对账：聚合 bizDate 当日的 fee summary + 各 cron 状态 + 资金池健康度 */
+    SettleReconcileVO reconcile(LocalDate bizDate);
 }
