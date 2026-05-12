@@ -51,12 +51,12 @@ public class AgencyTeamRewardSettleServiceImpl implements IAgencyTeamRewardSettl
     @Override
     public SettleResult settle(LocalDate bizDate, Long settleLogId) {
         SettleResult r = new SettleResult();
-        Date bizDateUtc = Date.from(bizDate.atStartOfDay(ZoneOffset.UTC).toInstant());
+        Date bizDateSql = java.sql.Date.valueOf(bizDate);
 
         // 查当日双轨业绩行（PRD §9.2 第 3 条：左右区当日均有新增 → 由 settleOneUser 内判 0 跳过）
         List<TBinaryVolumeDaily> rows = binaryVolumeDailyMapper.selectList(
                 new LambdaQueryWrapper<TBinaryVolumeDaily>()
-                        .eq(TBinaryVolumeDaily::getBizDate, bizDateUtc));
+                        .eq(TBinaryVolumeDaily::getBizDate, bizDateSql));
         r.setTotalCount(rows.size());
         if (rows.isEmpty()) {
             log.info("[agency_team_reward] no binary volume row, bizDate={}", bizDate);

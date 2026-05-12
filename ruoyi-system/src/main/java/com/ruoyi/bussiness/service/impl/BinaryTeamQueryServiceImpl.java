@@ -77,8 +77,8 @@ public class BinaryTeamQueryServiceImpl implements IBinaryTeamQueryService {
         vo.setDirectReferralCount(total != null && total.getDirectReferralCount() != null
                 ? total.getDirectReferralCount() : 0);
 
-        // 3. 当日业绩（biz_date = 今日 UTC，与 BinaryTreeServiceImpl 写入口径一致）
-        Date todayUtc = Date.from(LocalDate.now(ZoneOffset.UTC).atStartOfDay(ZoneOffset.UTC).toInstant());
+        // 3. 当日业绩（biz_date 是 MySQL DATE，使用 java.sql.Date 避免时区转换成 08:00:00 后精确匹配失败）
+        Date todayUtc = java.sql.Date.valueOf(LocalDate.now(ZoneOffset.UTC));
         TBinaryVolumeDaily daily = binaryVolumeDailyMapper.selectOne(
                 new LambdaQueryWrapper<TBinaryVolumeDaily>()
                         .eq(TBinaryVolumeDaily::getUserId, userId)

@@ -150,8 +150,7 @@ public class BinaryTreeServiceImpl implements IBinaryTreeService {
             return;
         }
 
-        Date bizDate = Date.from(LocalDate.now(ZoneOffset.UTC)
-                .atStartOfDay(ZoneOffset.UTC).toInstant());
+        Date bizDate = java.sql.Date.valueOf(LocalDate.now(ZoneOffset.UTC));
 
         Long curUserId = buyerNode.getParentId();
         String curDirection = buyerNode.getDirection();
