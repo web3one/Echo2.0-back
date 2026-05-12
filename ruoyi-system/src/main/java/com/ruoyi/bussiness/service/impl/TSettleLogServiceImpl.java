@@ -145,7 +145,17 @@ public class TSettleLogServiceImpl implements ITSettleLogService {
             qw.eq(TSettleLog::getStatus, status);
         }
         qw.orderByDesc(TSettleLog::getStartedAt);
-        return mapper.selectPage(new Page<>(pageNum, pageSize), qw);
+
+        // 手动分页规避 MP 3.4.1 PaginationInnerInterceptor 偶发 "SELECT COUNT()" BUG。
+        Page<TSettleLog> p = new Page<>(pageNum, pageSize);
+        Integer total = mapper.selectCount(qw);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            qw.last("LIMIT " + ((long) (pageNum - 1) * pageSize) + ", " + pageSize);
+            p.setRecords(mapper.selectList(qw));
+        }
+        return p;
     }
 
     @Override

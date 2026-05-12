@@ -26,7 +26,6 @@ public class GoldWithdrawAdminServiceImpl implements IGoldWithdrawAdminService {
     public IPage<TGoldWithdrawOrder> pageWithdraws(Integer pageNum, Integer pageSize, TGoldWithdrawOrder query) {
         long pn = pageNum == null || pageNum < 1 ? 1 : pageNum;
         long ps = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
-        Page<TGoldWithdrawOrder> p = new Page<>(pn, ps);
         LambdaQueryWrapper<TGoldWithdrawOrder> qw = new LambdaQueryWrapper<>();
         if (query != null) {
             if (query.getUserId() != null) qw.eq(TGoldWithdrawOrder::getUserId, query.getUserId());
@@ -38,7 +37,18 @@ public class GoldWithdrawAdminServiceImpl implements IGoldWithdrawAdminService {
             }
         }
         qw.orderByDesc(TGoldWithdrawOrder::getId);
-        return withdrawOrderMapper.selectPage(p, qw);
+
+        // 手动分页规避 MP 3.4.1 PaginationInnerInterceptor 偶发 "SELECT COUNT()" BUG。
+        // 先 selectCount 拿总数，再 selectList(LIMIT) 拿当页数据，自己拼 IPage。
+        Page<TGoldWithdrawOrder> p = new Page<>(pn, ps);
+        Integer total = withdrawOrderMapper.selectCount(qw);
+        long totalLong = total == null ? 0L : total.longValue();
+        p.setTotal(totalLong);
+        if (totalLong > 0) {
+            qw.last("LIMIT " + ((pn - 1) * ps) + ", " + ps);
+            p.setRecords(withdrawOrderMapper.selectList(qw));
+        }
+        return p;
     }
 
     @Override

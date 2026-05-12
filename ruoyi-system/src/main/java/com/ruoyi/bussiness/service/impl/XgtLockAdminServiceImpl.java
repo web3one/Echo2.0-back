@@ -88,7 +88,15 @@ public class XgtLockAdminServiceImpl implements IXgtLockAdminService {
                 userId, sourceType, status, beginLockedAt, endLockedAt, beginReleaseAt, endReleaseAt);
         wrapper.orderByDesc(TXgtLockPlan::getId);
 
-        IPage<TXgtLockPlan> page = xgtLockPlanMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        // 手动分页规避 MP 3.4.1 PaginationInnerInterceptor 偶发 "SELECT COUNT()" BUG。
+        Page<TXgtLockPlan> page = new Page<>(pageNum, pageSize);
+        Integer total = xgtLockPlanMapper.selectCount(wrapper);
+        long totalLong = total == null ? 0L : total.longValue();
+        page.setTotal(totalLong);
+        if (totalLong > 0) {
+            wrapper.last("LIMIT " + ((long) (pageNum - 1) * pageSize) + ", " + pageSize);
+            page.setRecords(xgtLockPlanMapper.selectList(wrapper));
+        }
         IPage<XgtLockPlanAdminVO> voPage = page.convert(this::toVO);
         fillUserLoginName(voPage.getRecords());
         return voPage;
