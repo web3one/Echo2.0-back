@@ -1,5 +1,6 @@
 package com.ruoyi.web.controller.bussiness;
 
+import com.ruoyi.bussiness.domain.TNodeLevel;
 import com.ruoyi.bussiness.domain.dto.NodeBuyDTO;
 import com.ruoyi.bussiness.domain.vo.MyMinerVO;
 import com.ruoyi.bussiness.domain.vo.NodeBuyResultVO;
@@ -48,6 +49,18 @@ public class ApiNodeController extends ApiBaseController {
     @GetMapping("/my")
     public AjaxResult listMyMiners() {
         List<MyMinerVO> list = nodeQueryService.listMyMiners(getStpUserId());
+        return success(list);
+    }
+
+    /**
+     * H5 商城 L1-L4 配置列表（GET /api/nodes/levels）。
+     *
+     * 返回 enabled=1 的等级，按 sort asc 排序。admin 后台改 t_node_level
+     * 表（价格 / 每日收益率 / 团队日封顶 / 启停）后，前端刷新即生效。
+     */
+    @GetMapping("/levels")
+    public AjaxResult listLevels() {
+        List<TNodeLevel> list = nodeQueryService.listEnabledLevels();
         return success(list);
     }
 

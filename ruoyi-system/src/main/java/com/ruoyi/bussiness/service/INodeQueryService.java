@@ -1,5 +1,6 @@
 package com.ruoyi.bussiness.service;
 
+import com.ruoyi.bussiness.domain.TNodeLevel;
 import com.ruoyi.bussiness.domain.vo.MyMinerVO;
 
 import java.util.List;
@@ -21,4 +22,13 @@ public interface INodeQueryService {
      * 返回包含已 expired / frozen / cancelled 的矿机，让用户能看到状态历史。
      */
     List<MyMinerVO> listMyMiners(Long userId);
+
+    /**
+     * 启用中的矿机等级配置（GET /api/nodes/levels）。
+     *
+     * 用于 H5 商城展示 L1-L4 卡片：价格 / 每日收益率 / 团队日封顶 等。
+     * 仅返回 enabled=1 的行，按 sort asc 排序；admin 后台改了 t_node_level
+     * 前端下次刷新即生效。
+     */
+    List<TNodeLevel> listEnabledLevels();
 }

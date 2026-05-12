@@ -2,8 +2,10 @@ package com.ruoyi.bussiness.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ruoyi.bussiness.domain.TNodeInstance;
+import com.ruoyi.bussiness.domain.TNodeLevel;
 import com.ruoyi.bussiness.domain.vo.MyMinerVO;
 import com.ruoyi.bussiness.mapper.TNodeInstanceMapper;
+import com.ruoyi.bussiness.mapper.TNodeLevelMapper;
 import com.ruoyi.bussiness.service.INodeQueryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,9 @@ public class NodeQueryServiceImpl implements INodeQueryService {
 
     @Resource
     private TNodeInstanceMapper nodeInstanceMapper;
+
+    @Resource
+    private TNodeLevelMapper nodeLevelMapper;
 
     @Override
     public List<MyMinerVO> listMyMiners(Long userId) {
@@ -150,5 +155,13 @@ public class NodeQueryServiceImpl implements INodeQueryService {
         if (TNodeInstance.STATUS_FROZEN.equals(status)) return 1;
         if (TNodeInstance.STATUS_EXPIRED.equals(status)) return 2;
         return 3;
+    }
+
+    @Override
+    public List<TNodeLevel> listEnabledLevels() {
+        return nodeLevelMapper.selectList(
+                new LambdaQueryWrapper<TNodeLevel>()
+                        .eq(TNodeLevel::getEnabled, 1)
+                        .orderByAsc(TNodeLevel::getSort));
     }
 }
