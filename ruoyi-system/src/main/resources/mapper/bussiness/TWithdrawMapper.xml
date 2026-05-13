@@ -99,7 +99,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM
         t_withdraw w
         LEFT JOIN t_app_user u ON w.user_id = u.user_id
-        left join t_app_wallet_record r on r.serial_id = w.serial_id and (r.type  = '2' or r.type  = '8' or r.type  = '50')
+        LEFT JOIN (
+            SELECT
+                serial_id,
+                MAX(u_amount) AS u_amount
+            FROM t_app_wallet_record
+            WHERE type IN ('2', '8', '50')
+            GROUP BY serial_id
+        ) r ON r.serial_id = w.serial_id
         <where>
             <if test="orderType!=null and orderType!='' and orderType!='-1'">
                 <choose>
@@ -152,7 +159,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 </if>
         </if>
         </where>
-        group by w.serial_id
         order by w.create_time desc
     </select>
 
