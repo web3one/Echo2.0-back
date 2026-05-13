@@ -175,9 +175,9 @@ public class TWithdrawController extends BaseController {
         if (!withdraw.getToAdress().equals(wi.getToAdress())) {
             return AjaxResult.error("只有提现中的订单才能修改地址！");
         }
-        // 改为人工打款流程：运营先在链下完成打款，再回系统点"通过"。tx_hash 必填用于审计。
+        // 人工打款流程：运营先完成线下/场外转账，再回系统点"通过"。tx_hash 必填用于审计。
         if (StringUtils.isEmpty(wi.getTxHash())) {
-            return AjaxResult.error("请先完成链下打款，并填写链上交易 Hash 后再点通过");
+            return AjaxResult.error("请先完成线下/场外转账，并填写链上交易 Hash 后再点通过");
         }
         withdraw.setStatus(1);
         withdraw.setUpdateBy(getUsername());

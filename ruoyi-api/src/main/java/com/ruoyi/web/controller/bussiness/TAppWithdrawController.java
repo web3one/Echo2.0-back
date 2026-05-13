@@ -2,8 +2,10 @@ package com.ruoyi.web.controller.bussiness;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ruoyi.bussiness.domain.TChainConfig;
 import com.ruoyi.bussiness.domain.TWithdraw;
 import com.ruoyi.bussiness.domain.vo.WithdrawFreezeVO;
+import com.ruoyi.bussiness.mapper.TChainConfigMapper;
 import com.ruoyi.bussiness.service.ITWithdrawService;
 import com.ruoyi.common.constant.CacheConstants;
 import com.ruoyi.common.core.domain.AjaxResult;
@@ -39,7 +41,7 @@ public class TAppWithdrawController extends ApiBaseController {
     private ITWithdrawService withdrawService;
 
     @Resource
-    private com.ruoyi.bussiness.service.IPoolService poolService;
+    private TChainConfigMapper chainConfigMapper;
     @Resource
     private RedisUtil redisUtil;
     @Value("${admin-redis-stream.names}")
@@ -72,10 +74,9 @@ public class TAppWithdrawController extends ApiBaseController {
     }
 
     /**
-     * Phase 5：提现提交前的底池校验。H5 选完链 + 金额后先调本接口，
-     * 不通过的话不要弹出"提交"按钮，避免用户白填半天又被 submit() 打回票。
+     * 提现提交前基础预检：只校验金额和链提现开关，不再校验平台底池余额。
      *
-     * @param symbol  币种（USDT 之类）
+     * @param symbol  币种（兼容旧前端参数）
      * @param chain   链：ETH / BSC / BASE / TRX
      * @param amount  金额
      */
@@ -84,9 +85,16 @@ public class TAppWithdrawController extends ApiBaseController {
         if (amount == null || amount.signum() <= 0) {
             return AjaxResult.error("金额无效");
         }
-        String err = poolService.validateForWithdraw(symbol, chain, amount);
-        if (err != null) {
-            return AjaxResult.error(err);
+        if (StringUtils.isEmpty(chain)) {
+            return AjaxResult.error("请选择提现链");
+        }
+        String chainCode = chain.trim().toUpperCase();
+        TChainConfig cfg = chainConfigMapper.selectById(chainCode);
+        if (cfg == null) {
+            return AjaxResult.error("不支持的链: " + chain);
+        }
+        if (cfg.getWithdrawEnabled() == null || cfg.getWithdrawEnabled() != 1) {
+            return AjaxResult.error("该链提现已暂停");
         }
         return AjaxResult.success("OK");
     }
