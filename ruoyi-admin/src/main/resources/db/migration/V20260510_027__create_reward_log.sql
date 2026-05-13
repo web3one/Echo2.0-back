@@ -13,9 +13,10 @@
 --      例：本应发 100，矿机剩余出局额度 30，则 gross=100, credited=30,
 --      truncated=70（这 70 永久消失，不能转给下台矿机 PRD §22 第 5 条）。
 --
---   2. **70/30 / 50/50 分账由 reward_type 决定**（PRD §2.3）：
+--   2. **分账由 reward_type 决定**（PRD §2.3 + 业务修订 2026-05-13）：
 --      static          → 50% USDT (usdt_credited) + 50% XGT 锁仓 (xgt_credited)
---      referral / team → 70% USDT (usdt_credited) + 30% credit (eco_credit_amount)
+--      referral        → 100% USDT (usdt_credited)，无 XGT / ecosystem_credit
+--      team            → 70% USDT (usdt_credited) + 30% credit (eco_credit_amount)
 --      agency_fee / founder_fee → 100% USDT (usdt_credited)
 --      xgt_unlock      → 100% XGT (xgt_credited)
 --      eco_credit_unlock → 100% USDT (usdt_credited，credit 解锁后转 USDT)
@@ -63,7 +64,7 @@ CREATE TABLE IF NOT EXISTS `t_reward_log` (
     `xgt_lock_plan_id` BIGINT UNSIGNED NULL COMMENT '触发 XGT 锁仓时关联的锁仓计划ID',
 
     -- ecosystem_credit 入账
-    `eco_credit_amount` DECIMAL(28, 8) NOT NULL DEFAULT 0 COMMENT '生态额度入账（直推/团队 30% 用）',
+    `eco_credit_amount` DECIMAL(28, 8) NOT NULL DEFAULT 0 COMMENT '生态额度入账（团队代理奖 30% 用；直推奖为 0）',
 
     -- 来源追溯
     `related_node_instance_id` BIGINT UNSIGNED NULL COMMENT '绑定矿机ID（决策 1：static/referral/team 必填）',

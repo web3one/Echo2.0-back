@@ -244,7 +244,7 @@ public class NodePurchaseServiceImpl implements INodePurchaseService {
 
         // 11. 直推奖（PRD §6 实时触发，与购买同事务）
         // 公式 = buyer 购买金额 × 10%（PRD §6.4）
-        // 70/30 入账（70% USDT 现货 + 30% ecosystem_credit balance_locked）
+        // 100% 入账金矿 USDT 子钱包，不产生 XGT / ecosystem_credit
         // 上级无 active 矿机 → 不发（PRD §6.3）；上级冻结 → 不发（追问 A）
         try {
             awardReferralReward(userId, level.getLevelCode(), price, inst.getId());

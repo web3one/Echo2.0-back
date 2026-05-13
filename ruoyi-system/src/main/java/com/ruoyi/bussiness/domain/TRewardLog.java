@@ -23,9 +23,10 @@ import java.util.Date;
  *   usdt_credited      = 健康出局截断后实际到账
  *   exit_truncated     = 被截断作废的金额（永久消失，不能转给下台矿机）
  *
- * 70/30 分账由 reward_type 决定：
+ * 分账由 reward_type 决定：
  *   static          → 50% USDT + 50% XGT 锁仓
- *   referral / team → 70% USDT + 30% credit
+ *   referral        → 100% USDT
+ *   team            → 70% USDT + 30% credit
  *   agency_fee / founder_fee → 100% USDT
  *
  * @date 2026-05-09

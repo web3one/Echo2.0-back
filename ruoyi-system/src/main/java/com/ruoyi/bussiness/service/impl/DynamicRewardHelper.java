@@ -28,7 +28,7 @@ import java.util.List;
  *
  * 设计要点：
  * - 不开新事务，调用方需保证已在事务内
- * - 70/30 入账（70% USDT 现货 + 30% ecosystem_credit locked）
+ * - 直推奖 100% USDT；团队代理奖 70% USDT + 30% ecosystem_credit locked
  * - 用户聚合健康出局截断：sumActiveAccumulated vs maxActivePrice × 3
  * - 累计 += credited（PRD §6.6/§9.5：截断部分永久消失，不入累计）
  * - 用户聚合达标 → 该用户所有 active 矿机一起 expired（用户决策 2026-05-09）
@@ -41,7 +41,7 @@ import java.util.List;
 @Slf4j
 public class DynamicRewardHelper {
 
-    private static final BigDecimal SEVENTY_PCT = new BigDecimal("0.7");
+    private static final BigDecimal TEAM_USDT_PCT = new BigDecimal("0.7");
     private static final BigDecimal EXIT_MULTIPLIER = new BigDecimal("3");
 
     @Resource
@@ -135,9 +135,17 @@ public class DynamicRewardHelper {
         BigDecimal credited = grossUsdt.compareTo(aggRemaining) <= 0 ? grossUsdt : aggRemaining;
         BigDecimal truncated = grossUsdt.subtract(credited);
 
-        // 6. 70/30 分账（精度防丢失：creditPart = credited - usdtPart）
-        BigDecimal usdtPart = credited.multiply(SEVENTY_PCT).setScale(8, RoundingMode.HALF_UP);
-        BigDecimal creditPart = credited.subtract(usdtPart);
+        // 6. 分账：直推奖 100% USDT；团队代理奖 70/30。
+        BigDecimal usdtPart;
+        BigDecimal creditPart;
+        if (TRewardLog.TYPE_REFERRAL.equals(rewardType)) {
+            usdtPart = credited;
+            creditPart = BigDecimal.ZERO;
+        } else {
+            // 精度防丢失：creditPart = credited - usdtPart
+            usdtPart = credited.multiply(TEAM_USDT_PCT).setScale(8, RoundingMode.HALF_UP);
+            creditPart = credited.subtract(usdtPart);
+        }
 
         // 7. INSERT t_reward_log（UK idempotent_key 冲突 → DuplicateKeyException）
         TRewardLog reward = new TRewardLog();

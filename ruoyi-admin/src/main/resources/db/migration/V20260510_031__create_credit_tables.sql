@@ -2,7 +2,7 @@
 -- V20260510_031 ecosystem_credit 二表（金矿 Phase 3）
 -- ============================================================================
 -- 业务变更：
---   ecosystem_credit（生态额度）来自直推奖 + 团队代理奖的 30% 部分（PRD §10）。
+--   ecosystem_credit（生态额度）来自团队代理奖的 30% 部分（PRD §10）。
 --   不能直接当 USDT 使用，必须"解锁"才能转为可用余额。
 --
 --   两种解锁方式：
@@ -15,7 +15,7 @@
 --
 -- 关键设计点：
 --   1. **t_ecosystem_credit_balance 双余额**：
---      - balance_locked：累计未解锁的 credit（直推/团队的 30% 部分进这里）
+--      - balance_locked：累计未解锁的 credit（团队代理奖的 30% 部分进这里）
 --      - balance_unlocked：已解锁未划出的 credit（解锁后转 USDT 时从这里扣）
 --      实际上 balance_unlocked 一般会立即转 USDT，长期不会留太多。
 --
@@ -48,13 +48,13 @@
 CREATE TABLE IF NOT EXISTS `t_ecosystem_credit_balance` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
     `user_id` BIGINT NOT NULL COMMENT '用户ID',
-    `balance_locked` DECIMAL(28, 8) NOT NULL DEFAULT 0 COMMENT '未解锁的 credit 累计（直推/团队 30% 部分进这里）',
+    `balance_locked` DECIMAL(28, 8) NOT NULL DEFAULT 0 COMMENT '未解锁的 credit 累计（团队代理奖 30% 部分进这里）',
     `balance_unlocked` DECIMAL(28, 8) NOT NULL DEFAULT 0 COMMENT '已解锁未划出（一般立即转 USDT 后归零）',
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-COMMENT='ecosystem_credit 余额（直推/团队 30% 累积，需解锁后才能用）';
+COMMENT='ecosystem_credit 余额（团队代理奖 30% 累积，需解锁后才能用）';
 
 -- ----------------------------------------------------------------------------
 -- 2. t_ecosystem_credit_unlock_log 解锁请求

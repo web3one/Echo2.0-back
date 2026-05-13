@@ -14,7 +14,7 @@ import java.util.List;
 @Data
 public class MyEcosystemCreditVO {
 
-    /** 累计未解锁 credit（直推/团队 30% 累计） */
+    /** 累计未解锁 credit（团队代理奖 30% 累计） */
     private BigDecimal balanceLocked;
 
     /** 已解锁未划出（一般 0） */
