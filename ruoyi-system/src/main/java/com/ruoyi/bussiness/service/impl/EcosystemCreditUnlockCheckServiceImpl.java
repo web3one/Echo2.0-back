@@ -162,6 +162,9 @@ public class EcosystemCreditUnlockCheckServiceImpl implements IEcosystemCreditUn
         reward.setStatus(TRewardLog.STATUS_SETTLED);
         reward.setRemark("eco_credit unlock_log_id=" + unlockLogId
                 + " type=" + row.getUnlockType());
+        Date now = new Date();
+        reward.setCreateTime(now);
+        reward.setUpdateTime(now);
         rewardLogMapper.insert(reward);
         Long rewardLogId = reward.getId();
 

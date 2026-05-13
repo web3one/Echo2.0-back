@@ -12,6 +12,9 @@ import java.util.List;
  */
 public interface TEcosystemCreditUnlockLogMapper extends BaseMapper<TEcosystemCreditUnlockLog> {
 
+    @Select("SELECT * FROM t_ecosystem_credit_unlock_log WHERE idempotent_key = #{key} LIMIT 1")
+    TEcosystemCreditUnlockLog selectByIdempotentKey(@Param("key") String key);
+
     /** 用户 in_progress 占用量（A+B 都算，扣减可用 balance_locked） */
     @Select("SELECT COALESCE(SUM(amount_credit), 0) FROM t_ecosystem_credit_unlock_log " +
             "WHERE user_id = #{userId} AND status = 'in_progress'")

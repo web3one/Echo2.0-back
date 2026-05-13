@@ -20,6 +20,7 @@ import com.ruoyi.bussiness.service.IAgentStatusService;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.MessageUtils;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -209,6 +210,9 @@ public class AgencyApplyServiceImpl implements IAgencyApplyService {
         app.setRightVolumeTotalSnap(rightTotal);
         app.setActiveNodeValueSnap(activeValue);
         app.setStatus(TAgentApplication.STATUS_PENDING);
+        Date now = new Date();
+        app.setCreateTime(now);
+        app.setUpdateTime(now);
         applicationMapper.insert(app);
         log.info("agency apply submitted: userId={} from={} target={} appId={}",
                 userId, curLevel, targetLevel, app.getId());
@@ -238,9 +242,16 @@ public class AgencyApplyServiceImpl implements IAgencyApplyService {
             throw new ServiceException(MessageUtils.message("agency.cancel.not_pending"));
         }
         app.setStatus(TAgentApplication.STATUS_CANCELLED);
-        app.setReviewAt(new Date());
-        applicationMapper.updateById(app);
+        Date now = new Date();
+        app.setReviewAt(now);
+        app.setUpdateTime(now);
+        applicationMapper.update(null, new LambdaUpdateWrapper<TAgentApplication>()
+                .eq(TAgentApplication::getId, applicationId)
+                .set(TAgentApplication::getStatus, TAgentApplication.STATUS_CANCELLED)
+                .set(TAgentApplication::getReviewAt, now)
+                .set(TAgentApplication::getUpdateTime, now));
         log.info("agency apply cancelled by user: userId={} appId={}", userId, applicationId);
+        app.setUpdateTime(now);
         return app;
     }
 
@@ -279,8 +290,10 @@ public class AgencyApplyServiceImpl implements IAgencyApplyService {
         vo.setReviewAdminId(app.getReviewAdminId());
         vo.setReviewAt(app.getReviewAt());
         vo.setReviewRemark(app.getReviewRemark());
-        vo.setCreateTime(app.getCreateTime());
-        vo.setUpdateTime(app.getUpdateTime());
+        Date createTime = app.getCreateTime() != null ? app.getCreateTime() : app.getReviewAt();
+        Date updateTime = app.getUpdateTime() != null ? app.getUpdateTime() : createTime;
+        vo.setCreateTime(createTime);
+        vo.setUpdateTime(updateTime);
         return vo;
     }
 

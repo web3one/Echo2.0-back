@@ -49,6 +49,7 @@ public class TEcosystemCreditUnlockLog implements Serializable {
     private String cancelReason;
     private BigDecimal usdtCredited;
     private Long relatedRewardLogId;
+    private String idempotentKey;
 
     @TableField(fill = FieldFill.INSERT)
     private Date createTime;

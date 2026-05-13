@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ruoyi.bussiness.domain.TAgentApplication;
@@ -151,11 +152,19 @@ public class AgencyReviewServiceImpl implements IAgencyReviewService {
                 reviewRemark);
 
         // UPDATE 本表
+        Date now = new Date();
         app.setStatus(TAgentApplication.STATUS_APPROVED);
         app.setReviewAdminId(reviewAdminId);
-        app.setReviewAt(new Date());
+        app.setReviewAt(now);
         app.setReviewRemark(reviewRemark);
-        applicationMapper.updateById(app);
+        app.setUpdateTime(now);
+        applicationMapper.update(null, new LambdaUpdateWrapper<TAgentApplication>()
+                .eq(TAgentApplication::getId, id)
+                .set(TAgentApplication::getStatus, TAgentApplication.STATUS_APPROVED)
+                .set(TAgentApplication::getReviewAdminId, reviewAdminId)
+                .set(TAgentApplication::getReviewAt, now)
+                .set(TAgentApplication::getReviewRemark, reviewRemark)
+                .set(TAgentApplication::getUpdateTime, now));
         log.info("agency apply approved: appId={} userId={} -> {} adminId={}",
                 id, app.getUserId(), app.getTargetLevel(), reviewAdminId);
         return app;
@@ -174,11 +183,19 @@ public class AgencyReviewServiceImpl implements IAgencyReviewService {
         if (!TAgentApplication.STATUS_PENDING.equals(app.getStatus())) {
             throw new ServiceException("仅待审核状态的申请可拒绝");
         }
+        Date now = new Date();
         app.setStatus(TAgentApplication.STATUS_REJECTED);
         app.setReviewAdminId(reviewAdminId);
-        app.setReviewAt(new Date());
+        app.setReviewAt(now);
         app.setReviewRemark(reviewRemark);
-        applicationMapper.updateById(app);
+        app.setUpdateTime(now);
+        applicationMapper.update(null, new LambdaUpdateWrapper<TAgentApplication>()
+                .eq(TAgentApplication::getId, id)
+                .set(TAgentApplication::getStatus, TAgentApplication.STATUS_REJECTED)
+                .set(TAgentApplication::getReviewAdminId, reviewAdminId)
+                .set(TAgentApplication::getReviewAt, now)
+                .set(TAgentApplication::getReviewRemark, reviewRemark)
+                .set(TAgentApplication::getUpdateTime, now));
         log.info("agency apply rejected: appId={} userId={} adminId={}",
                 id, app.getUserId(), reviewAdminId);
         return app;
@@ -214,8 +231,10 @@ public class AgencyReviewServiceImpl implements IAgencyReviewService {
         vo.setReviewAdminId(app.getReviewAdminId());
         vo.setReviewAt(app.getReviewAt());
         vo.setReviewRemark(app.getReviewRemark());
-        vo.setCreateTime(app.getCreateTime());
-        vo.setUpdateTime(app.getUpdateTime());
+        Date createTime = app.getCreateTime() != null ? app.getCreateTime() : app.getReviewAt();
+        Date updateTime = app.getUpdateTime() != null ? app.getUpdateTime() : createTime;
+        vo.setCreateTime(createTime);
+        vo.setUpdateTime(updateTime);
         return vo;
     }
 

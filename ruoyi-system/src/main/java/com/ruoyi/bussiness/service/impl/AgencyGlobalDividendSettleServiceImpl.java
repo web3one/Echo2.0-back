@@ -25,6 +25,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -193,6 +194,9 @@ public class AgencyGlobalDividendSettleServiceImpl implements IAgencyGlobalDivid
         reward.setBizDate(bizDate);
         reward.setIdempotentKey(idempotentKey);
         reward.setStatus(TRewardLog.STATUS_SETTLED);
+        Date now = new Date();
+        reward.setCreateTime(now);
+        reward.setUpdateTime(now);
         rewardLogMapper.insert(reward);
         Long rewardLogId = reward.getId();
 

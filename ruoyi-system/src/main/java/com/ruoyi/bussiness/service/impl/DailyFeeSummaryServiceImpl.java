@@ -85,9 +85,16 @@ public class DailyFeeSummaryServiceImpl implements IDailyFeeSummaryService {
         row.setGoldWithdrawPlatformFeeUsdt(platformFee);
         row.setStatus(TDailyFeeSummary.STATUS_SETTLED);
         row.setSettleLogId(settleLogId);
+        Date now = new Date();
         if (existing == null) {
+            row.setCreateTime(now);
+            row.setUpdateTime(now);
             dailyFeeSummaryMapper.insert(row);
         } else {
+            if (row.getCreateTime() == null) {
+                row.setCreateTime(now);
+            }
+            row.setUpdateTime(now);
             dailyFeeSummaryMapper.updateById(row);
         }
 

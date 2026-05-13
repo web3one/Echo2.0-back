@@ -165,6 +165,9 @@ public class GoldWithdrawServiceImpl implements IGoldWithdrawService {
         order.setIdempotentKey(dto.getIdempotentKey());
         order.setClientIp(clientIp);
         order.setClientUserAgent(truncateUA(clientUserAgent));
+        Date now = new Date();
+        order.setCreateTime(now);
+        order.setUpdateTime(now);
         try {
             withdrawOrderMapper.insert(order);
         } catch (DuplicateKeyException e) {
@@ -191,6 +194,7 @@ public class GoldWithdrawServiceImpl implements IGoldWithdrawService {
         upd.setId(order.getId());
         upd.setStatus(TGoldWithdrawOrder.STATUS_COMPLETED);
         upd.setCompletedAt(new Date());
+        upd.setUpdateTime(upd.getCompletedAt());
         upd.setGoldWalletLogId(walletLogId);
         upd.setSpotWalletRecordId(spotRecordId);
         withdrawOrderMapper.updateById(upd);

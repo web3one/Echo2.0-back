@@ -17,6 +17,7 @@ import com.ruoyi.bussiness.mapper.TXgtLogMapper;
 import com.ruoyi.bussiness.service.IEcosystemCreditService;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.MessageUtils;
+import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -118,6 +119,16 @@ public class EcosystemCreditServiceImpl implements IEcosystemCreditService {
         if (userId == null) {
             throw new ServiceException(MessageUtils.message("api.auth.required"));
         }
+        if (dto == null || StrUtil.isBlank(dto.getIdempotentKey())) {
+            throw new ServiceException(MessageUtils.message("eco_credit.unlock.idempotent.empty"));
+        }
+        TEcosystemCreditUnlockLog existing = ecoUnlockLogMapper.selectByIdempotentKey(dto.getIdempotentKey());
+        if (existing != null) {
+            if (!userId.equals(existing.getUserId())) {
+                throw new ServiceException(MessageUtils.message("eco_credit.unlock.duplicate"));
+            }
+            return buildResult(existing, true);
+        }
         if (dto == null
                 || dto.getAmountCredit() == null
                 || dto.getAmountCredit().compareTo(BigDecimal.ZERO) <= 0) {
@@ -149,13 +160,18 @@ public class EcosystemCreditServiceImpl implements IEcosystemCreditService {
         row.setStartedAt(now);
         row.setTradeVolumeCompleted(BigDecimal.ZERO);
         row.setUsdtCredited(BigDecimal.ZERO);
+        row.setIdempotentKey(dto.getIdempotentKey());
 
         Long xgtLockPlanId = null;
         Date xgtLockReleaseAt = null;
 
         if (TEcosystemCreditUnlockLog.TYPE_TRADE_VOLUME.equals(unlockType)) {
             row.setTradeVolumeRequired(amount.multiply(TRADE_VOLUME_MULTIPLIER));
-            ecoUnlockLogMapper.insert(row);
+            try {
+                ecoUnlockLogMapper.insert(row);
+            } catch (DuplicateKeyException e) {
+                return handleDuplicateKey(userId, dto.getIdempotentKey());
+            }
         } else {
             // B 路径：锁 1:1 等值 XGT
             // 检查 XGT 可用余额（balance_unlocked）
@@ -166,7 +182,11 @@ public class EcosystemCreditServiceImpl implements IEcosystemCreditService {
             }
 
             // 先 INSERT unlock_log 占位拿 id，再创建 XGT lock plan
-            ecoUnlockLogMapper.insert(row);
+            try {
+                ecoUnlockLogMapper.insert(row);
+            } catch (DuplicateKeyException e) {
+                return handleDuplicateKey(userId, dto.getIdempotentKey());
+            }
             Long unlockLogId = row.getId();
 
             TXgtLockPlan plan = new TXgtLockPlan();
@@ -232,16 +252,36 @@ public class EcosystemCreditServiceImpl implements IEcosystemCreditService {
             row.setXgtLockPlanId(xgtLockPlanId);
         }
 
+        return buildResult(row, false);
+    }
+
+    private EcosystemCreditUnlockResultVO handleDuplicateKey(Long userId, String idempotentKey) {
+        TEcosystemCreditUnlockLog existing = ecoUnlockLogMapper.selectByIdempotentKey(idempotentKey);
+        if (existing == null || !userId.equals(existing.getUserId())) {
+            throw new ServiceException(MessageUtils.message("eco_credit.unlock.duplicate"));
+        }
+        return buildResult(existing, true);
+    }
+
+    private EcosystemCreditUnlockResultVO buildResult(TEcosystemCreditUnlockLog row, boolean idempotent) {
+        Long xgtLockPlanId = row.getXgtLockPlanId();
+        Date xgtLockReleaseAt = null;
+        if (xgtLockPlanId != null) {
+            TXgtLockPlan plan = xgtLockPlanMapper.selectById(xgtLockPlanId);
+            if (plan != null) {
+                xgtLockReleaseAt = plan.getReleaseAt();
+            }
+        }
         EcosystemCreditUnlockResultVO vo = new EcosystemCreditUnlockResultVO();
         vo.setUnlockLogId(row.getId());
-        vo.setUnlockType(unlockType);
-        vo.setAmountCredit(amount);
+        vo.setUnlockType(row.getUnlockType());
+        vo.setAmountCredit(row.getAmountCredit());
         vo.setTradeVolumeRequired(row.getTradeVolumeRequired());
         vo.setXgtLockPlanId(xgtLockPlanId);
         vo.setXgtLockReleaseAt(xgtLockReleaseAt);
         vo.setStatus(row.getStatus());
-        vo.setStartedAt(now);
-        vo.setIdempotent(false);
+        vo.setStartedAt(row.getStartedAt());
+        vo.setIdempotent(idempotent);
         return vo;
     }
 

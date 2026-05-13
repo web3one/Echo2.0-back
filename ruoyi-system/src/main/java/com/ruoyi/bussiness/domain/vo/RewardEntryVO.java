@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.ZoneId;
 import java.util.Date;
 
 /**
@@ -42,7 +43,10 @@ public class RewardEntryVO implements Serializable {
         RewardEntryVO vo = new RewardEntryVO();
         vo.setId(log.getId());
         vo.setType(log.getRewardType());
-        vo.setCreatedAt(log.getCreateTime());
+        vo.setCreatedAt(log.getCreateTime() != null
+                ? log.getCreateTime()
+                : (log.getBizDate() == null ? null
+                : Date.from(log.getBizDate().atStartOfDay(ZoneId.systemDefault()).toInstant())));
         vo.setGross(nz(log.getGrossAmountUsdt()));
         vo.setUsdtCredited(nz(log.getUsdtCredited()));
         vo.setEcoCreditLocked(nz(log.getEcoCreditAmount()));

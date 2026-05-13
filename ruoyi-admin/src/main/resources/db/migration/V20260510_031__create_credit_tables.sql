@@ -78,9 +78,11 @@ CREATE TABLE IF NOT EXISTS `t_ecosystem_credit_unlock_log` (
     `cancel_reason` VARCHAR(255) NULL,
     `usdt_credited` DECIMAL(28, 8) NOT NULL DEFAULT 0 COMMENT '完成时转入 USDT 的金额（status=completed 时填）',
     `related_reward_log_id` BIGINT UNSIGNED NULL COMMENT 'completed 后会写一条 t_reward_log type=eco_credit_unlock，此处反向关联',
+    `idempotent_key` VARCHAR(128) NOT NULL COMMENT '幂等键 <user_id>:<request_uuid>',
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_idempotent` (`idempotent_key`),
     KEY `idx_user_status` (`user_id`, `status`),
     KEY `idx_status_started` (`status`, `started_at`) COMMENT '定时扫 in_progress 检查交易量进度'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci

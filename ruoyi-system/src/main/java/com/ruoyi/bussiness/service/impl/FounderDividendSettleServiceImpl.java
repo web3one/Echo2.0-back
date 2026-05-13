@@ -21,6 +21,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -148,6 +149,9 @@ public class FounderDividendSettleServiceImpl implements IFounderDividendSettleS
         reward.setIdempotentKey(idempotentKey);
         reward.setStatus(TRewardLog.STATUS_SETTLED);
         reward.setRemark("seat_no=" + seatNo);
+        Date now = new Date();
+        reward.setCreateTime(now);
+        reward.setUpdateTime(now);
         rewardLogMapper.insert(reward);
         Long rewardLogId = reward.getId();
 

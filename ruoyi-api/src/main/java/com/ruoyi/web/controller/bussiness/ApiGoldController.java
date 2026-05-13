@@ -3,8 +3,10 @@ package com.ruoyi.web.controller.bussiness;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ruoyi.bussiness.domain.TAppAsset;
+import com.ruoyi.bussiness.domain.TAppUser;
 import com.ruoyi.bussiness.domain.TGoldWithdrawOrder;
 import com.ruoyi.bussiness.domain.dto.GoldWithdrawDTO;
+import com.ruoyi.bussiness.domain.vo.GoldProfileVO;
 import com.ruoyi.bussiness.domain.vo.GoldWalletVO;
 import com.ruoyi.bussiness.domain.vo.GoldWithdrawResultVO;
 import com.ruoyi.bussiness.domain.vo.SpotUsdtVO;
@@ -28,6 +30,7 @@ import javax.servlet.http.HttpServletRequest;
 /**
  * 金矿子钱包 + 提现用户端 Controller（金矿 B 路线第一组）。
  *
+ * GET  /api/gold/profile        当前登录用户基础资料（仅金矿 H5 所需字段）
  * GET  /api/gold/wallet         我的金矿余额 + 当前提现费率
  * GET  /api/gold/spot-usdt      我的主现货 USDT 余额（买矿机/创始席位扣款源）
  * POST /api/gold/withdraw       提现到现货 USDT（扣 5% 手续费）
@@ -45,6 +48,12 @@ public class ApiGoldController extends ApiBaseController {
 
     @Resource
     private ITAppAssetService appAssetService;
+
+    @GetMapping("/profile")
+    public AjaxResult getMyProfile() {
+        TAppUser user = getAppUser();
+        return success(GoldProfileVO.from(user));
+    }
 
     @GetMapping("/wallet")
     public AjaxResult getMyWallet() {

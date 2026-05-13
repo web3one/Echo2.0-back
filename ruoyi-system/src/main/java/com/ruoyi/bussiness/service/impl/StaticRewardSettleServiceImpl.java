@@ -194,6 +194,9 @@ public class StaticRewardSettleServiceImpl implements IStaticRewardSettleService
             reward.setBizDate(bizDate);
             reward.setIdempotentKey(idemKey);
             reward.setStatus(TRewardLog.STATUS_SETTLED);
+            Date now = new Date();
+            reward.setCreateTime(now);
+            reward.setUpdateTime(now);
             rewardLogMapper.insert(reward);
             Long rewardLogId = reward.getId();
 
