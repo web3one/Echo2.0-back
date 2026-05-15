@@ -622,16 +622,9 @@ public class TAppUserController extends ApiBaseController {
             if (StringUtils.isBlank(loginPassword)) {
                 return MessageUtils.message("user.login.password.null");
             }
-            String code = tAppUser.getCode();
-            if (StringUtils.isBlank(code)) {
-                return MessageUtils.message("login.code_error");
-            }
             TAppUser tAppUser1 = tAppUserService.getOne(new LambdaQueryWrapper<TAppUser>().eq(TAppUser::getEmail, email));
             if (null == tAppUser1) {
                 return MessageUtils.message("login.email.not_register");
-            }
-            if (!EmailUtils.verifyCode(email, UserCodeTypeEnum.LOGIN, code)) {
-                return MessageUtils.message("login.code_error");
             }
             if (StringUtils.isBlank(tAppUser1.getLoginPassword())
                     || !SecurityUtils.matchesPassword(loginPassword, tAppUser1.getLoginPassword())) {

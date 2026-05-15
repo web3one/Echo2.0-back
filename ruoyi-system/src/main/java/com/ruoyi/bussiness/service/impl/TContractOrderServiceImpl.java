@@ -61,6 +61,8 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
     private RedisCache redisCache;
     @Resource
     private SettingService settingService;
+    @Resource
+    private ICopyTradingService copyTradingService;
 
     /**
      * 查询U本位委托
@@ -200,7 +202,7 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
             //扣除金额
             tAppAsset.setAmout(tAppAsset.getAmout().subtract(amount));
             tAppAsset.setAvailableAmount(tAppAsset.getAvailableAmount().subtract(amount));
-            createPosition(symbol, delegatePrice, closePrice, amount, num, leverage, type, delegateType, openFee, userId, serialId,user.getAdminParentIds(),0);
+            createPosition(symbol, delegatePrice, closePrice, amount, num, leverage, type, delegateType, openFee, userId, serialId,user.getAdminParentIds(),0, beforeMount);
             appAssetService.updateTAppAsset(tAppAsset);
             appWalletRecordService.generateRecord(userId, amount, RecordEnum.CONTRACT_TRANSACTIONSUB.getCode(), user.getLoginName(), serialId, "合约交易", beforeMount, beforeMount.subtract(amount), tContractCoin.getBaseCoin().toLowerCase(),user.getAdminParentIds());
         }else{
@@ -211,7 +213,7 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
                 closePrice = ContractComputerUtil.getStrongPrice(leverage, type, currentlyPrice, num, amount, openFee);
                 tAppAsset.setAmout(tAppAsset.getAmout().subtract(amount));
                 tAppAsset.setAvailableAmount(tAppAsset.getAvailableAmount().subtract(amount));
-                createPosition(symbol, currentlyPrice, closePrice, amount, num, leverage, type, delegateType, openFee, userId, serialId, user.getAdminParentIds(),0);
+                createPosition(symbol, currentlyPrice, closePrice, amount, num, leverage, type, delegateType, openFee, userId, serialId, user.getAdminParentIds(),0, beforeMount);
                 appAssetService.updateTAppAsset(tAppAsset);
                 appWalletRecordService.generateRecord(userId, amount, RecordEnum.CONTRACT_TRANSACTIONSUB.getCode(), user.getLoginName(), serialId, "合约交易", beforeMount, beforeMount.subtract(amount), tContractCoin.getBaseCoin().toLowerCase(),user.getAdminParentIds());
             }else {
@@ -303,7 +305,7 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
     }
 
     //创建仓位对象
-    private TContractPosition createPosition(String symbol, BigDecimal openPrice, BigDecimal closePrice, BigDecimal amount, BigDecimal num, BigDecimal level, Integer type, Integer delegateType, BigDecimal openFee, Long uerId, String serialId, String adminParentIds,Integer deliveryDays) {
+    private TContractPosition createPosition(String symbol, BigDecimal openPrice, BigDecimal closePrice, BigDecimal amount, BigDecimal num, BigDecimal level, Integer type, Integer delegateType, BigDecimal openFee, Long uerId, String serialId, String adminParentIds,Integer deliveryDays, BigDecimal availableBeforeOrder) {
         TContractPosition tContractPosition = new TContractPosition();
         BigDecimal bigDecimal = amount.subtract(openFee);
         tContractPosition.setSymbol(symbol);
@@ -336,6 +338,11 @@ public class TContractOrderServiceImpl extends ServiceImpl<TContractOrderMapper,
                 tAppUser.setTotleAmont(tAppUser.getTotleAmont().add(tContractPosition.getAmount()));
                 appUserService.updateTotleAmont(tAppUser);
             }
+        }
+        try {
+            copyTradingService.afterTraderOpen(tContractPosition, availableBeforeOrder);
+        } catch (Exception e) {
+            log.warn("copy trading open hook failed: position={} err={}", tContractPosition.getId(), e.getMessage());
         }
 
         return tContractPosition;

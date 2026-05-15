@@ -60,6 +60,8 @@ public class TContractPositionServiceImpl extends ServiceImpl<TContractPositionM
 
     @Resource
     private ITContractLossService contractLossService;
+    @Resource
+    private ICopyTradingService copyTradingService;
 
     @Resource
     private RedisUtil redisUtil;
@@ -195,6 +197,11 @@ public class TContractPositionServiceImpl extends ServiceImpl<TContractPositionM
         }
         appAssetService.updateTAppAsset(asset);
         appWalletRecordService.generateRecord(contractPosition.getUserId(), money, RecordEnum.CONTRACT_TRANSACTION_CLOSING.getCode(), null, contractPosition.getOrderNo(), "合约交易平仓", amont, amont.add(money), tContractCoin.getBaseCoin(), appUser.getAdminParentIds());
+        try {
+            copyTradingService.afterTraderClose(contractPosition);
+        } catch (Exception e) {
+            log.warn("copy trading close hook failed: position={} err={}", contractPosition.getId(), e.getMessage());
+        }
         return "success";
     }
 
@@ -576,6 +583,11 @@ public class TContractPositionServiceImpl extends ServiceImpl<TContractPositionM
         asset.setAvailableAmount(availAsset.add(money));
         appAssetService.updateTAppAsset(asset);
         appWalletRecordService.generateRecord(contractPosition.getUserId(), money, RecordEnum.CONTRACT_TRANSACTION_CLOSING.getCode(), null, contractPosition.getOrderNo(), "合约交易平仓", amont, amont.add(money), tContractCoin.getBaseCoin(), appUser.getAdminParentIds());
+        try {
+            copyTradingService.afterTraderClose(contractPosition);
+        } catch (Exception e) {
+            log.warn("copy trading close hook failed: position={} err={}", contractPosition.getId(), e.getMessage());
+        }
         return "success";
     }
 
