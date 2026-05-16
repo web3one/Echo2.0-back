@@ -26,6 +26,8 @@ public enum RecordEnum {
     NON_STAKING_MINING_INCOME(20, "矿池收益"),
     CURRENCY_TRADINGADD(21, "币币交易+"),
     CURRENCY_TRADINGSUB(22, "币币交易-"),
+    TRADFI_TRADINGADD(80, "TradFi交易+"),
+    TRADFI_TRADINGSUB(81, "TradFi交易-"),
     ASSET_ACCOUNTADD(23, "资产账户+"),
     ASSET_ACCOUNTSUB(24, "资产账户-"),
     TRANSACTION_ACCOUNTADD(25, "交易账户+"),
