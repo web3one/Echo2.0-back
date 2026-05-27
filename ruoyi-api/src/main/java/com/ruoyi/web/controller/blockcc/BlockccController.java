@@ -63,6 +63,7 @@ public class BlockccController {
         HashMap<String, Object> map = new HashMap<>();
         List<Kline> historyKline;
         Ticker24hVO ticker;
+        boolean gateMarket = isGateMarket(klineParamVO);
         try {
             historyKline = blockccService.getHistoryKline(klineParamVO);
             if (historyKline == null) historyKline = new ArrayList<>();
@@ -71,24 +72,30 @@ public class BlockccController {
                     klineParamVO.getMarket(), klineParamVO.getSymbol(), e.toString());
             historyKline = new ArrayList<>();
         }
-        try {
-            List<Kline> mappedKline = blockccService.getConPriceMap(klineParamVO, historyKline);
-            if (mappedKline != null) historyKline = mappedKline;
-        } catch (Exception e) {
-            log.debug("[/kline] 控线价差叠加失败，使用原始K线 (market={}, symbol={}): {}",
-                    klineParamVO.getMarket(), klineParamVO.getSymbol(), e.toString());
-        }
-        try {
-            ticker = blockccService.getHistoryKline24hrTicker(klineParamVO);
-        } catch (Exception e) {
-            log.warn("[/kline] ticker 获取失败 (market={}, symbol={}): {}",
-                    klineParamVO.getMarket(), klineParamVO.getSymbol(), e.toString());
-            ticker = null;
-        }
-        if (ticker == null) ticker = new Ticker24hVO();
-        if (historyKline.isEmpty() && "gate".equals(klineParamVO.getMarket())) {
+        if (historyKline.isEmpty() && gateMarket) {
             historyKline = getGateHistoryKline(klineParamVO);
         }
+        if (!gateMarket) {
+            try {
+                List<Kline> mappedKline = blockccService.getConPriceMap(klineParamVO, historyKline);
+                if (mappedKline != null) historyKline = mappedKline;
+            } catch (Exception e) {
+                log.debug("[/kline] 控线价差叠加失败，使用原始K线 (market={}, symbol={}): {}",
+                        klineParamVO.getMarket(), klineParamVO.getSymbol(), e.toString());
+            }
+        }
+        if (gateMarket) {
+            ticker = tickerFromHistory(klineParamVO, historyKline);
+        } else {
+            try {
+                ticker = blockccService.getHistoryKline24hrTicker(klineParamVO);
+            } catch (Exception e) {
+                log.warn("[/kline] ticker 获取失败 (market={}, symbol={}): {}",
+                        klineParamVO.getMarket(), klineParamVO.getSymbol(), e.toString());
+                ticker = null;
+            }
+        }
+        if (ticker == null) ticker = new Ticker24hVO();
         map.put("historyKline", historyKline);
         if (!historyKline.isEmpty()) {
             Kline kline = historyKline.get(historyKline.size() - 1);
@@ -202,13 +209,51 @@ public class BlockccController {
     }
 
     private int klineCacheSeconds(KlineParamVO p) {
-        return p != null && p.getEnd() != null ? 60 : 3;
+        return p != null && p.getEnd() != null ? 120 : 20;
     }
 
     private int klineLimit(KlineParamVO p) {
         Integer limit = p == null ? null : p.getLimit();
-        if (limit == null) return 300;
+        if (limit == null) return 120;
         return Math.max(50, Math.min(limit, 1000));
+    }
+
+    private boolean isGateMarket(KlineParamVO p) {
+        return p != null && "gate".equalsIgnoreCase(p.getMarket());
+    }
+
+    private Ticker24hVO tickerFromHistory(KlineParamVO p, List<Kline> historyKline) {
+        Ticker24hVO ticker = new Ticker24hVO();
+        String base = p == null ? null : normalizeBaseSymbol(p.getSymbol());
+        if (base != null) {
+            ticker.setSymbol(base + "USDT");
+        } else if (p != null) {
+            ticker.setSymbol(p.getSymbol());
+        }
+        if (historyKline == null || historyKline.isEmpty()) {
+            return ticker;
+        }
+        BigDecimal high = null;
+        BigDecimal low = null;
+        BigDecimal volume = BigDecimal.ZERO;
+        for (Kline kline : historyKline) {
+            if (kline == null) continue;
+            if (kline.getHigh() != null) {
+                BigDecimal value = BigDecimal.valueOf(kline.getHigh());
+                high = high == null ? value : high.max(value);
+            }
+            if (kline.getLow() != null) {
+                BigDecimal value = BigDecimal.valueOf(kline.getLow());
+                low = low == null ? value : low.min(value);
+            }
+            if (kline.getVolume() != null) {
+                volume = volume.add(BigDecimal.valueOf(kline.getVolume()));
+            }
+        }
+        ticker.setHighPrice(high);
+        ticker.setLowPrice(low);
+        ticker.setVolume(volume);
+        return ticker;
     }
 
     private String normalizeKey(String value) {

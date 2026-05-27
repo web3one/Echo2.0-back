@@ -768,7 +768,7 @@ public class BlockccService {
     private int klineLimit(KlineParamVO klineParam) {
         Integer limit = klineParam == null ? null : klineParam.getLimit();
         if (limit == null) {
-            return 300;
+            return 120;
         }
         return Math.max(50, Math.min(limit, 1000));
     }
