@@ -2,7 +2,6 @@ package com.ruoyi.bussiness.service.impl;
 
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
 import java.math.BigDecimal;
@@ -518,14 +517,7 @@ public class TCurrencyOrderServiceImpl extends ServiceImpl<TCurrencyOrderMapper,
 
     @Override
     public List<TCurrencyOrder> selectOrderList(TCurrencyOrder tCurrencyOrder) {
-        List<TCurrencyOrder> tCurrencyOrders = tCurrencyOrderMapper.selectOrderList(tCurrencyOrder);
-        for (TCurrencyOrder currencyOrder : tCurrencyOrders) {
-            QueryWrapper<TCurrencySymbol> queryWrapper = new QueryWrapper<TCurrencySymbol>();
-            queryWrapper.eq("UPPER(coin)", currencyOrder.getSymbol().toUpperCase());
-            TCurrencySymbol tCurrencySymbol = tCurrencySymbolMapper.selectOne(queryWrapper);
-        }
-
-        return tCurrencyOrders;
+        return tCurrencyOrderMapper.selectOrderList(tCurrencyOrder);
     }
 
 

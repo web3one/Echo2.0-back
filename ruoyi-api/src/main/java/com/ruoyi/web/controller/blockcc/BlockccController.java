@@ -4,7 +4,9 @@ import cc.block.data.api.domain.market.Kline;
 import cn.hutool.http.HttpRequest;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.ruoyi.common.core.domain.AjaxResult;
+import com.ruoyi.common.core.redis.RedisCache;
 import com.ruoyi.framework.web.domain.KlineParamVO;
 import com.ruoyi.framework.web.domain.Ticker24hVO;
 import com.ruoyi.framework.web.service.BlockccService;
@@ -22,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 数据源接口 不做验证 直接调用api接口
@@ -37,6 +40,8 @@ public class BlockccController {
     private String host;
     @Autowired
     BlockccService blockccService;
+    @Autowired
+    RedisCache redisCache;
 
     /**
      * 登录历史k线
@@ -46,6 +51,14 @@ public class BlockccController {
      */
     @PostMapping({"/kline", "/api/kline"})
     public AjaxResult kline(@RequestBody KlineParamVO klineParamVO) {
+        String cacheKey = buildKlineCacheKey(klineParamVO);
+        Object cached = redisCache.getCacheObject(cacheKey);
+        if (cached != null) {
+            AjaxResult cachedResult = toAjaxResult(cached);
+            if (cachedResult != null) {
+                return cachedResult;
+            }
+        }
         AjaxResult ajax = AjaxResult.success();
         HashMap<String, Object> map = new HashMap<>();
         List<Kline> historyKline;
@@ -88,7 +101,144 @@ public class BlockccController {
         }
         map.put("ticker", ticker);
         ajax.put("data", map);
+        redisCache.setCacheObject(cacheKey, ajax, klineCacheSeconds(klineParamVO), TimeUnit.SECONDS);
         return ajax;
+    }
+
+    @PostMapping("/api/market/depth")
+    public AjaxResult depth(@RequestBody Map<String, Object> params) {
+        String market = normalizeParam(params.get("market"), "binance");
+        String symbol = normalizeParam(params.get("symbol"), "");
+        int limit = parseLimit(params.get("limit"));
+        String cacheKey = "api:market:depth:" + market + ":" + symbol + ":" + limit;
+        Object cached = redisCache.getCacheObject(cacheKey);
+        if (cached != null) {
+            AjaxResult cachedResult = toAjaxResult(cached);
+            if (cachedResult != null) {
+                return cachedResult;
+            }
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("asks", new ArrayList<>());
+        data.put("bids", new ArrayList<>());
+        data.put("source", "none");
+        data.put("timestamp", System.currentTimeMillis());
+        try {
+            Map<String, Object> depth = fetchRealDepth(market, symbol, limit);
+            if (depth != null) {
+                data = depth;
+            }
+        } catch (Exception e) {
+            log.warn("[/api/market/depth] depth failed (market={}, symbol={}): {}", market, symbol, e.toString());
+        }
+        AjaxResult result = AjaxResult.success(data);
+        redisCache.setCacheObject(cacheKey, result, 2, TimeUnit.SECONDS);
+        return result;
+    }
+
+    private Map<String, Object> fetchRealDepth(String market, String symbol, int limit) {
+        if (symbol == null || symbol.isEmpty()) return null;
+        if ("gate".equals(market) || "tradfi".equals(market)) {
+            return fetchGateDepth(symbol, limit);
+        }
+        Map<String, Object> binanceDepth = fetchBinanceDepth(symbol, limit);
+        if (binanceDepth != null) return binanceDepth;
+        return fetchGateDepth(symbol, limit);
+    }
+
+    private Map<String, Object> fetchBinanceDepth(String symbol, int limit) {
+        String pair = toBinancePair(symbol);
+        if (pair == null) return null;
+        String body = HttpRequest.get("https://api.binance.com/api/v3/depth?symbol=" + pair + "&limit=" + limit)
+                .timeout(3000).execute().body();
+        JSONObject json = JSON.parseObject(body);
+        return toDepthResult(json.getJSONArray("asks"), json.getJSONArray("bids"), "binance");
+    }
+
+    private Map<String, Object> fetchGateDepth(String symbol, int limit) {
+        String pair = toGatePair(symbol);
+        if (pair == null) return null;
+        String body = HttpRequest.get("https://api.gateio.ws/api/v4/spot/order_book?currency_pair=" + pair + "&limit=" + limit)
+                .timeout(3000).execute().body();
+        JSONObject json = JSON.parseObject(body);
+        return toDepthResult(json.getJSONArray("asks"), json.getJSONArray("bids"), "gate");
+    }
+
+    private Map<String, Object> toDepthResult(JSONArray asks, JSONArray bids, String source) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("asks", normalizeDepthRows(asks));
+        data.put("bids", normalizeDepthRows(bids));
+        data.put("source", source);
+        data.put("timestamp", System.currentTimeMillis());
+        return data;
+    }
+
+    private List<List<BigDecimal>> normalizeDepthRows(JSONArray rows) {
+        List<List<BigDecimal>> list = new ArrayList<>();
+        if (rows == null) return list;
+        for (int i = 0; i < rows.size(); i++) {
+            JSONArray row = rows.getJSONArray(i);
+            if (row == null || row.size() < 2) continue;
+            try {
+                List<BigDecimal> item = new ArrayList<>();
+                item.add(new BigDecimal(String.valueOf(row.get(0))));
+                item.add(new BigDecimal(String.valueOf(row.get(1))));
+                list.add(item);
+            } catch (Exception ignored) {
+            }
+        }
+        return list;
+    }
+
+    private String buildKlineCacheKey(KlineParamVO p) {
+        if (p == null) return "api:market:kline:null";
+        return "api:market:kline:"
+                + normalizeKey(p.getMarket()) + ":"
+                + normalizeKey(p.getSymbol()) + ":"
+                + normalizeKey(p.getInterval()) + ":"
+                + (p.getEnd() == null ? "latest" : p.getEnd()) + ":"
+                + (p.getLimit() == null ? "default" : p.getLimit());
+    }
+
+    private int klineCacheSeconds(KlineParamVO p) {
+        return p != null && p.getEnd() != null ? 60 : 3;
+    }
+
+    private String normalizeKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeParam(Object value, String fallback) {
+        if (value == null) return fallback;
+        String text = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
+        return text.isEmpty() ? fallback : text;
+    }
+
+    private int parseLimit(Object value) {
+        try {
+            int limit = Integer.parseInt(String.valueOf(value));
+            return Math.max(5, Math.min(limit, 20));
+        } catch (Exception e) {
+            return 10;
+        }
+    }
+
+    private String toBinancePair(String symbol) {
+        String base = normalizeBaseSymbol(symbol);
+        return base == null ? null : base + "USDT";
+    }
+
+    private AjaxResult toAjaxResult(Object cached) {
+        if (cached instanceof AjaxResult) {
+            return (AjaxResult) cached;
+        }
+        if (cached instanceof Map) {
+            AjaxResult result = new AjaxResult();
+            result.putAll((Map<? extends String, ?>) cached);
+            return result;
+        }
+        return null;
     }
 
     private List<Kline> getGateHistoryKline(KlineParamVO klineParamVO) {

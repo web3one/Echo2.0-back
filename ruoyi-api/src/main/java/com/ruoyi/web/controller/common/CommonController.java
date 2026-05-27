@@ -7,6 +7,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -104,6 +105,14 @@ public class CommonController
     @ApiOperation(value = "获取币种列表")
     @PostMapping("/getCoinList")
     public AjaxResult getCoinList() {
+        String cacheKey = "api:market:coin-list:v2";
+        Object cached = redisCache.getCacheObject(cacheKey);
+        if (cached != null) {
+            AjaxResult cachedResult = toAjaxResult(cached);
+            if (cachedResult != null) {
+                return cachedResult;
+            }
+        }
         //查询币种跟随性价格
        // LocalDateTime now = LocalDateTime.now();
        // LocalDateTime beforeTime = now.minusDays(1);
@@ -162,7 +171,21 @@ public class CommonController
         map.put("currencyList",currencyList);
         map.put("contractList",contractList);
         map.put("tradfiList", tradfiList);
-        return AjaxResult.success(map);
+        AjaxResult result = AjaxResult.success(map);
+        redisCache.setCacheObject(cacheKey, result, 2, TimeUnit.SECONDS);
+        return result;
+    }
+
+    private AjaxResult toAjaxResult(Object cached) {
+        if (cached instanceof AjaxResult) {
+            return (AjaxResult) cached;
+        }
+        if (cached instanceof Map) {
+            AjaxResult result = new AjaxResult();
+            result.putAll((Map<? extends String, ?>) cached);
+            return result;
+        }
+        return null;
     }
 
     private BigDecimal toBigDecimal(Object value) {

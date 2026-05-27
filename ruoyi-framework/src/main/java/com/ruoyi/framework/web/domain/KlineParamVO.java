@@ -12,6 +12,8 @@ public class KlineParamVO {
     private String[] symbols;
     //结束
     private Long end ;
+    //条数
+    private Integer limit;
     //交易所
     private String market;
     private String[] markets;
