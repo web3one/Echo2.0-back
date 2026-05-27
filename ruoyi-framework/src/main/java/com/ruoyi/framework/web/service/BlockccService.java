@@ -57,7 +57,6 @@ public class BlockccService {
         switch (market) {
             case "gate": {
                 // Gate 现货 REST 历史 K 线：公开免鉴权
-                // 接口：GET https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=BTC_USDT&interval=1m&limit=1000&to=...(秒)
                 String pair = toGatePair(symbol);
                 String gateInterval = toGateInterval(klineParam.getInterval());
                 if (pair == null || gateInterval == null) {
@@ -66,7 +65,7 @@ public class BlockccService {
                 StringBuilder url = new StringBuilder("https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=")
                         .append(pair)
                         .append("&interval=").append(gateInterval)
-                        .append("&limit=1000");
+                        .append("&limit=").append(klineLimit(klineParam));
                 if (klineParam.getEnd() != null) {
                     url.append("&to=").append(klineParam.getEnd() / 1000L);
                 }
@@ -83,6 +82,7 @@ public class BlockccService {
                 parameters.put("symbol", toUsdtPairNoSep(symbol));
                 Interval interval = Interval.valueOf(klineParam.getInterval());
                 parameters.put("interval", interval.toString());
+                parameters.put("limit", klineLimit(klineParam));
                 if (klineParam.getEnd() != null) {
                     parameters.put("endTime", klineParam.getEnd());
                 }
@@ -763,5 +763,13 @@ public class BlockccService {
             }
         }
         return historyKline;
+    }
+
+    private int klineLimit(KlineParamVO klineParam) {
+        Integer limit = klineParam == null ? null : klineParam.getLimit();
+        if (limit == null) {
+            return 300;
+        }
+        return Math.max(50, Math.min(limit, 1000));
     }
 }

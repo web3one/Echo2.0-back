@@ -205,6 +205,12 @@ public class BlockccController {
         return p != null && p.getEnd() != null ? 60 : 3;
     }
 
+    private int klineLimit(KlineParamVO p) {
+        Integer limit = p == null ? null : p.getLimit();
+        if (limit == null) return 300;
+        return Math.max(50, Math.min(limit, 1000));
+    }
+
     private String normalizeKey(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
@@ -249,7 +255,7 @@ public class BlockccController {
         StringBuilder url = new StringBuilder("https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=")
                 .append(pair)
                 .append("&interval=").append(interval)
-                .append("&limit=1000");
+                .append("&limit=").append(klineLimit(klineParamVO));
         if (klineParamVO.getEnd() != null) {
             url.append("&to=").append(klineParamVO.getEnd() / 1000L);
         }
